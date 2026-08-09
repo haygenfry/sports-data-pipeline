@@ -1,4 +1,5 @@
 import requests
+import json
 
 url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
 
@@ -19,6 +20,9 @@ print(len(events))
 for event in events:
     competition = event["competitions"][0]
     competitors = competition["competitors"]
+    game_id = event["id"]
+    game_date = event["date"]
+    venue = competition["venue"]["fullName"]
 
     home_team = ""
     away_team = ""
@@ -33,10 +37,14 @@ for event in events:
             away_team = team_name
 
     game = {
+        "game_id": game_id,
+        "date": game_date,
         "home_team": home_team,
-        "away_team": away_team
+        "away_team": away_team,
+        "venue": venue
     }
 
     schedule.append(game)
 
-print(schedule)
+with open("week1_schedule.json", "w") as file:
+    json.dump(schedule, file, indent=4)
