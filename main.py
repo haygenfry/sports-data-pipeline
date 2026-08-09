@@ -1,5 +1,6 @@
 import requests
 import json
+import psycopg2
 
 url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
 
@@ -48,3 +49,42 @@ for event in events:
 
 with open("week1_schedule.json", "w") as file:
     json.dump(schedule, file, indent=4)
+
+connection = psycopg2.connect(
+    host="localhost",
+    port=5432,
+    database="nfl_data",
+    user="nfl_user",
+    password="nfl_password"
+)
+
+cursor = connection.cursor()
+
+for game in schedule:
+    cursor.execute(
+        """
+        INSERT INTO nfl_games (
+            game_id,
+            game_date,
+            home_team,
+            away_team,
+            venue
+        )
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (game_id) DO NOTHING
+        """,
+        (
+            game["game_id"],
+            game["date"],
+            game["home_team"],
+            game["away_team"],
+            game["venue"]
+        )
+    )
+
+connection.commit()
+
+cursor.close()
+connection.close()
+
+print("Loaded NFL schedule into PostgreSQL")
