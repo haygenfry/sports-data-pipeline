@@ -49,6 +49,10 @@ for week in range(1, 19):
             home_record = ""
             road_record = ""
 
+            print(competitor.keys())
+            print(competitor["records"])
+            raise SystemExit
+
             for record in records:
                 if record["type"] == "total":
                     overall_record = record["summary"]

@@ -22,23 +22,44 @@ cursor = connection.cursor()
 cursor.execute(
     """
     SELECT
-        game_id,
-        game_date,
-        away_team,
-        home_team,
-        away_logo,
-        home_logo,
-        away_record,
-        home_record,
-        away_home_record,
-        away_road_record,
-        home_home_record,
-        home_road_record,
-        venue
-    FROM nfl_games
-    WHERE season = %s
-      AND week = %s
-    ORDER BY game_date;
+        g.game_id,
+        g.game_date,
+        g.away_team,
+        g.home_team,
+        g.away_logo,
+        g.home_logo,
+        g.away_record,
+        g.home_record,
+        g.away_home_record,
+        g.away_road_record,
+        g.home_home_record,
+        g.home_road_record,
+        g.venue,
+
+        away_standings.conference,
+        away_standings.division_record,
+        away_standings.conference_record,
+        away_standings.streak,
+
+        home_standings.conference,
+        home_standings.division_record,
+        home_standings.conference_record,
+        home_standings.streak
+
+    FROM nfl_games g
+
+    LEFT JOIN nfl_team_standings away_standings
+        ON g.away_team = away_standings.team_name
+        AND g.season = away_standings.season
+
+    LEFT JOIN nfl_team_standings home_standings
+        ON g.home_team = home_standings.team_name
+        AND g.season = home_standings.season
+
+    WHERE g.season = %s
+      AND g.week = %s
+
+    ORDER BY g.game_date;
     """,
     (2026, selected_week)
 )
@@ -78,7 +99,15 @@ if st.session_state["selected_game"]:
         away_road_record,
         home_home_record,
         home_road_record,
-        venue
+        venue,
+        away_conference,
+        away_division_record,
+        away_conference_record,
+        away_streak,
+        home_conference,
+        home_division_record,
+        home_conference_record,
+        home_streak
     ) = selected_game
 
     if st.button("← Back to Schedule"):
@@ -120,15 +149,23 @@ if st.session_state["selected_game"]:
 
     with away_info:
         st.markdown(f"### {away_team}")
+        st.write(f"Conference: {away_conference}")
         st.write(f"Overall: {away_record}")
         st.write(f"Home: {away_home_record}")
         st.write(f"Road: {away_road_record}")
+        st.write(f"Division: {away_division_record}")
+        st.write(f"Conference Record: {away_conference_record}")
+        st.write(f"Streak: {away_streak}")
 
     with home_info:
         st.markdown(f"### {home_team}")
+        st.write(f"Conference: {home_conference}")
         st.write(f"Overall: {home_record}")
         st.write(f"Home: {home_home_record}")
         st.write(f"Road: {home_road_record}")
+        st.write(f"Division: {home_division_record}")
+        st.write(f"Conference Record: {home_conference_record}")
+        st.write(f"Streak: {home_streak}")
 
     st.stop()
 
@@ -155,7 +192,15 @@ for game in games:
         away_road_record,
         home_home_record,
         home_road_record,
-        venue
+        venue,
+        away_conference,
+        away_division_record,
+        away_conference_record,
+        away_streak,
+        home_conference,
+        home_division_record,
+        home_conference_record,
+        home_streak
     ) = game
 
     eastern_time = game_date.astimezone(
