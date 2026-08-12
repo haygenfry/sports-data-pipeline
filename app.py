@@ -21,7 +21,20 @@ cursor = connection.cursor()
 
 cursor.execute(
     """
-    SELECT game_id, game_date, away_team, home_team, away_logo, home_logo, venue
+    SELECT
+        game_id,
+        game_date,
+        away_team,
+        home_team,
+        away_logo,
+        home_logo,
+        away_record,
+        home_record,
+        away_home_record,
+        away_road_record,
+        home_home_record,
+        home_road_record,
+        venue
     FROM nfl_games
     WHERE season = %s
       AND week = %s
@@ -38,6 +51,11 @@ if "selected_game" not in st.session_state:
 cursor.close()
 connection.close()
 
+
+# -------------------------
+# GAME DETAIL PAGE
+# -------------------------
+
 if st.session_state["selected_game"]:
 
     selected_game_id = st.session_state["selected_game"]
@@ -47,7 +65,21 @@ if st.session_state["selected_game"]:
         if game[0] == selected_game_id
     )
 
-    game_id, game_date, away_team, home_team, away_logo, home_logo, venue = selected_game
+    (
+        game_id,
+        game_date,
+        away_team,
+        home_team,
+        away_logo,
+        home_logo,
+        away_record,
+        home_record,
+        away_home_record,
+        away_road_record,
+        home_home_record,
+        home_road_record,
+        venue
+    ) = selected_game
 
     if st.button("← Back to Schedule"):
         st.session_state["selected_game"] = None
@@ -82,23 +114,56 @@ if st.session_state["selected_game"]:
 
     st.divider()
 
-    st.header("Game Overview")
-    st.write("More matchup information coming soon.")
+    st.header("Team Records")
+
+    away_info, home_info = st.columns(2)
+
+    with away_info:
+        st.markdown(f"### {away_team}")
+        st.write(f"Overall: {away_record}")
+        st.write(f"Home: {away_home_record}")
+        st.write(f"Road: {away_road_record}")
+
+    with home_info:
+        st.markdown(f"### {home_team}")
+        st.write(f"Overall: {home_record}")
+        st.write(f"Home: {home_home_record}")
+        st.write(f"Road: {home_road_record}")
 
     st.stop()
 
-st.subheader(f"Week {selected_week}")
 
+# -------------------------
+# SCHEDULE PAGE
+# -------------------------
+
+st.subheader(f"Week {selected_week}")
 st.write(f"{len(games)} games")
 
 for game in games:
-    game_id, game_date, away_team, home_team, away_logo, home_logo, venue = game
+
+    (
+        game_id,
+        game_date,
+        away_team,
+        home_team,
+        away_logo,
+        home_logo,
+        away_record,
+        home_record,
+        away_home_record,
+        away_road_record,
+        home_home_record,
+        home_road_record,
+        venue
+    ) = game
 
     eastern_time = game_date.astimezone(
         ZoneInfo("America/New_York")
     )
 
     with st.container(border=True):
+
         away_col, middle_col, home_col = st.columns([2, 1, 2])
 
         with away_col:
@@ -113,7 +178,9 @@ for game in games:
             st.markdown(f"### {home_team}")
 
         st.write(
-            eastern_time.strftime("%A, %B %d · %I:%M %p %Z")
+            eastern_time.strftime(
+                "%A, %B %d · %I:%M %p %Z"
+            )
         )
 
         st.write(venue)

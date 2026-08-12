@@ -31,17 +31,50 @@ for week in range(1, 19):
         home_logo = ""
         away_logo = ""
 
+        home_team_record = ""
+        away_team_record = ""
+
+        home_team_home_record = ""
+        home_team_road_record = ""
+
+        away_team_home_record = ""
+        away_team_road_record = ""
+
         for competitor in competitors:
             team_name = competitor["team"]["displayName"]
             team_logo = competitor["team"]["logo"]
+            records = competitor["records"]
+
+            overall_record = ""
+            home_record = ""
+            road_record = ""
+
+            for record in records:
+                if record["type"] == "total":
+                    overall_record = record["summary"]
+
+                if record["type"] == "home":
+                    home_record = record["summary"]
+
+                if record["type"] == "road":
+                    road_record = record["summary"]
+
 
             if competitor["homeAway"] == "home":
                 home_team = team_name
                 home_logo = team_logo
 
+                home_team_record = overall_record
+                home_team_home_record = home_record
+                home_team_road_record = road_record
+
             if competitor["homeAway"] == "away":
                 away_team = team_name
                 away_logo = team_logo
+
+                away_team_record = overall_record
+                away_team_home_record = home_record
+                away_team_road_record = road_record
 
         game = {
             "game_id": game_id,
@@ -52,6 +85,12 @@ for week in range(1, 19):
             "away_team": away_team,
             "home_logo": home_logo,
             "away_logo": away_logo,
+            "home_record": home_team_record,
+            "away_record": away_team_record,
+            "home_home_record": home_team_home_record,
+            "home_road_record": home_team_road_record,
+            "away_home_record": away_team_home_record,
+            "away_road_record": away_team_road_record,
             "venue": venue
         }
 
@@ -82,9 +121,15 @@ for game in schedule:
             away_team,
             home_logo,
             away_logo,
+            home_record,
+            away_record,
+            home_home_record,
+            home_road_record,
+            away_home_record,
+            away_road_record,
             venue
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (game_id)
         DO UPDATE SET
             season = EXCLUDED.season,
@@ -94,6 +139,12 @@ for game in schedule:
             away_team = EXCLUDED.away_team,
             home_logo = EXCLUDED.home_logo,
             away_logo = EXCLUDED.away_logo,
+            home_record = EXCLUDED.home_record,
+            away_record = EXCLUDED.away_record,
+            home_home_record = EXCLUDED.home_home_record,
+            home_road_record = EXCLUDED.home_road_record,
+            away_home_record = EXCLUDED.away_home_record,
+            away_road_record = EXCLUDED.away_road_record,
             venue = EXCLUDED.venue
         """,
         (
@@ -105,6 +156,12 @@ for game in schedule:
             game["away_team"],
             game["home_logo"],
             game["away_logo"],
+            game["home_record"],
+            game["away_record"],
+            game["home_home_record"],
+            game["home_road_record"],
+            game["away_home_record"],
+            game["away_road_record"],
             game["venue"]
         )
     )
