@@ -2,6 +2,42 @@ import streamlit as st
 import psycopg2
 from zoneinfo import ZoneInfo
 
+def get_last_three(cursor, team_id, season, game_date):
+    cursor.execute(
+        """
+        SELECT
+            away_team_id,
+            away_score,
+            home_team_id,
+            home_score
+        FROM nfl_games
+        WHERE completed = TRUE
+          AND season = %s
+          AND game_date < %s
+          AND (
+              away_team_id = %s
+              OR home_team_id = %s
+          )
+        ORDER BY game_date DESC
+        LIMIT 3;
+        """,
+        (season, game_date, team_id, team_id)
+    )
+
+    games = cursor.fetchall()
+
+    results = []
+
+    for away_team_id, away_score, home_team_id, home_score in games:
+        if away_score == home_score:
+            results.append("T")
+        elif away_team_id == team_id:
+            results.append("W" if away_score > home_score else "L")
+        else:
+            results.append("W" if home_score > away_score else "L")
+
+    return results
+
 connection = psycopg2.connect(
     host="localhost",
     port=5432,
@@ -26,6 +62,8 @@ cursor.execute(
         g.game_date,
         g.away_team,
         g.home_team,
+        g.away_team_id,
+        g.home_team_id,
         g.away_logo,
         g.home_logo,
         g.away_record,
@@ -49,11 +87,11 @@ cursor.execute(
     FROM nfl_games g
 
     LEFT JOIN nfl_team_standings away_standings
-        ON g.away_team = away_standings.team_name
+        ON g.away_team_id = away_standings.team_id
         AND g.season = away_standings.season
 
     LEFT JOIN nfl_team_standings home_standings
-        ON g.home_team = home_standings.team_name
+        ON g.home_team_id = home_standings.team_id
         AND g.season = home_standings.season
 
     WHERE g.season = %s
@@ -69,10 +107,6 @@ games = cursor.fetchall()
 if "selected_game" not in st.session_state:
     st.session_state["selected_game"] = None
 
-cursor.close()
-connection.close()
-
-
 # -------------------------
 # GAME DETAIL PAGE
 # -------------------------
@@ -82,15 +116,24 @@ if st.session_state["selected_game"]:
     selected_game_id = st.session_state["selected_game"]
 
     selected_game = next(
-        game for game in games
-        if game[0] == selected_game_id
+        (
+            game for game in games
+            if game[0] == selected_game_id
+        ),
+        None
     )
+
+    if selected_game is None:
+        st.session_state["selected_game"] = None
+        st.rerun()
 
     (
         game_id,
         game_date,
         away_team,
         home_team,
+        away_team_id,
+        home_team_id,
         away_logo,
         home_logo,
         away_record,
@@ -109,6 +152,20 @@ if st.session_state["selected_game"]:
         home_conference_record,
         home_streak
     ) = selected_game
+
+    away_last_three = get_last_three(
+        cursor,
+        away_team_id,
+        2026,
+        game_date
+    )
+
+    home_last_three = get_last_three(
+        cursor,
+        home_team_id,
+        2026,
+        game_date
+    )
 
     if st.button("← Back to Schedule"):
         st.session_state["selected_game"] = None
@@ -156,7 +213,10 @@ if st.session_state["selected_game"]:
         st.write(f"Division: {away_division_record}")
         st.write(f"Conference Record: {away_conference_record}")
         st.write(f"Streak: {away_streak}")
-
+        st.write(
+            f"Last 3 (most recent first): "
+            f"{' - '.join(away_last_three) if away_last_three else 'No games played'}"
+        )
     with home_info:
         st.markdown(f"### {home_team}")
         st.write(f"Conference: {home_conference}")
@@ -166,7 +226,10 @@ if st.session_state["selected_game"]:
         st.write(f"Division: {home_division_record}")
         st.write(f"Conference Record: {home_conference_record}")
         st.write(f"Streak: {home_streak}")
-
+        st.write(
+            f"Last 3 (most recent first): "
+            f"{' - '.join(home_last_three) if home_last_three else 'No games played'}"
+        )
     st.stop()
 
 
@@ -184,6 +247,8 @@ for game in games:
         game_date,
         away_team,
         home_team,
+        away_team_id,
+        home_team_id,
         away_logo,
         home_logo,
         away_record,
@@ -233,3 +298,6 @@ for game in games:
         if st.button("View Game", key=game_id):
             st.session_state["selected_game"] = game_id
             st.rerun()
+
+cursor.close()
+connection.close()

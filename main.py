@@ -9,7 +9,7 @@ schedule = []
 for week in range(1, 19):
 
     params = {
-        "dates": "2026",
+        "dates": "2025",
         "seasontype": 2,
         "week": week
     }
@@ -40,18 +40,26 @@ for week in range(1, 19):
         away_team_home_record = ""
         away_team_road_record = ""
 
+        home_team_id = ""
+        away_team_id = ""
+
+        home_score = 0
+        away_score = 0
+
+        game_state = event["status"]["type"]["state"]
+        game_status = event["status"]["type"]["description"]
+        completed = event["status"]["type"]["completed"]
+
         for competitor in competitors:
             team_name = competitor["team"]["displayName"]
             team_logo = competitor["team"]["logo"]
+            team_score = int(competitor["score"])
+            team_id = competitor["team"]["id"]
             records = competitor["records"]
 
             overall_record = ""
             home_record = ""
             road_record = ""
-
-            print(competitor.keys())
-            print(competitor["records"])
-            raise SystemExit
 
             for record in records:
                 if record["type"] == "total":
@@ -66,7 +74,9 @@ for week in range(1, 19):
 
             if competitor["homeAway"] == "home":
                 home_team = team_name
+                home_team_id = team_id
                 home_logo = team_logo
+                home_score = team_score
 
                 home_team_record = overall_record
                 home_team_home_record = home_record
@@ -74,7 +84,9 @@ for week in range(1, 19):
 
             if competitor["homeAway"] == "away":
                 away_team = team_name
+                away_team_id = team_id
                 away_logo = team_logo
+                away_score = team_score
 
                 away_team_record = overall_record
                 away_team_home_record = home_record
@@ -82,13 +94,20 @@ for week in range(1, 19):
 
         game = {
             "game_id": game_id,
-            "season": 2026,
+            "season": 2025,
             "week": week,
             "date": game_date,
             "home_team": home_team,
             "away_team": away_team,
             "home_logo": home_logo,
             "away_logo": away_logo,
+            "home_team_id": home_team_id,
+            "away_team_id": away_team_id,
+            "home_score": home_score,
+            "away_score": away_score,
+            "game_state": game_state,
+            "game_status": game_status,
+            "completed": completed,
             "home_record": home_team_record,
             "away_record": away_team_record,
             "home_home_record": home_team_home_record,
@@ -100,7 +119,7 @@ for week in range(1, 19):
 
         schedule.append(game)
 
-with open("2026_schedule.json", "w") as file:
+with open("2025_schedule.json", "w") as file:
     json.dump(schedule, file, indent=4)
 
 connection = psycopg2.connect(
@@ -116,11 +135,13 @@ cursor = connection.cursor()
 for game in schedule:
     cursor.execute(
         """
-        INSERT INTO nfl_games (
+        INSERT INTO nfl_games_2025 (
             game_id,
             season,
             week,
             game_date,
+            home_team_id,
+            away_team_id,
             home_team,
             away_team,
             home_logo,
@@ -131,14 +152,24 @@ for game in schedule:
             home_road_record,
             away_home_record,
             away_road_record,
+            home_score,
+            away_score,
+            game_state,
+            game_status,
+            completed,
             venue
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+        )       
         ON CONFLICT (game_id)
         DO UPDATE SET
             season = EXCLUDED.season,
             week = EXCLUDED.week,
             game_date = EXCLUDED.game_date,
+            home_team_id = EXCLUDED.home_team_id,
+            away_team_id = EXCLUDED.away_team_id,
             home_team = EXCLUDED.home_team,
             away_team = EXCLUDED.away_team,
             home_logo = EXCLUDED.home_logo,
@@ -149,6 +180,11 @@ for game in schedule:
             home_road_record = EXCLUDED.home_road_record,
             away_home_record = EXCLUDED.away_home_record,
             away_road_record = EXCLUDED.away_road_record,
+            home_score = EXCLUDED.home_score,
+            away_score = EXCLUDED.away_score,
+            game_state = EXCLUDED.game_state,
+            game_status = EXCLUDED.game_status,
+            completed = EXCLUDED.completed,
             venue = EXCLUDED.venue
         """,
         (
@@ -156,6 +192,8 @@ for game in schedule:
             game["season"],
             game["week"],
             game["date"],
+            game["home_team_id"],
+            game["away_team_id"],
             game["home_team"],
             game["away_team"],
             game["home_logo"],
@@ -166,6 +204,11 @@ for game in schedule:
             game["home_road_record"],
             game["away_home_record"],
             game["away_road_record"],
+            game["home_score"],
+            game["away_score"],
+            game["game_state"],
+            game["game_status"],
+            game["completed"],
             game["venue"]
         )
     )
