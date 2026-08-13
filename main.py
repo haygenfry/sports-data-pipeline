@@ -9,7 +9,7 @@ schedule = []
 for week in range(1, 19):
 
     params = {
-        "dates": "2025",
+        "dates": "2026",
         "seasontype": 2,
         "week": week
     }
@@ -94,7 +94,7 @@ for week in range(1, 19):
 
         game = {
             "game_id": game_id,
-            "season": 2025,
+            "season": 2026,
             "week": week,
             "date": game_date,
             "home_team": home_team,
@@ -119,7 +119,7 @@ for week in range(1, 19):
 
         schedule.append(game)
 
-with open("2025_schedule.json", "w") as file:
+with open("2026_schedule.json", "w") as file:
     json.dump(schedule, file, indent=4)
 
 connection = psycopg2.connect(
@@ -135,7 +135,7 @@ cursor = connection.cursor()
 for game in schedule:
     cursor.execute(
         """
-        INSERT INTO nfl_games_2025 (
+        INSERT INTO nfl_games (
             game_id,
             season,
             week,
