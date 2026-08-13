@@ -38,6 +38,38 @@ def get_last_three(cursor, team_id, season, game_date):
 
     return results
 
+def get_head_to_head(cursor, team_1_id, team_2_id, game_date):
+    cursor.execute(
+        """
+        SELECT
+            season,
+            game_date,
+            away_team,
+            away_score,
+            home_team,
+            home_score
+        FROM nfl_games
+        WHERE completed = TRUE
+          AND game_date < %s
+          AND (
+              (away_team_id = %s AND home_team_id = %s)
+              OR
+              (away_team_id = %s AND home_team_id = %s)
+          )
+        ORDER BY game_date DESC
+        LIMIT 5;
+        """,
+        (
+            game_date,
+            team_1_id,
+            team_2_id,
+            team_2_id,
+            team_1_id
+        )
+    )
+
+    return cursor.fetchall()
+
 connection = psycopg2.connect(
     host="localhost",
     port=5432,
@@ -167,6 +199,13 @@ if st.session_state["selected_game"]:
         game_date
     )
 
+    head_to_head = get_head_to_head(
+        cursor,
+        away_team_id,
+        home_team_id,
+        game_date
+    )
+
     if st.button("← Back to Schedule"):
         st.session_state["selected_game"] = None
         st.rerun()
@@ -230,8 +269,85 @@ if st.session_state["selected_game"]:
             f"Last 3 (most recent first): "
             f"{' - '.join(home_last_three) if home_last_three else 'No games played'}"
         )
-    st.stop()
 
+    st.divider()
+
+    (
+        overview_tab,
+        team_stats_tab,
+        players_tab,
+        matchup_tab,
+        injuries_tab,
+        weather_tab,
+        betting_tab,
+        history_tab
+    ) = st.tabs([
+        "Overview",
+        "Team Stats",
+        "Players",
+        "Matchup",
+        "Injuries",
+        "Weather",
+        "Betting",
+        "History"
+    ])
+
+    with overview_tab:
+        st.subheader("Game Overview")
+        st.write("Prediction and matchup summary coming soon.")
+
+    with team_stats_tab:
+        st.subheader("Team Stats")
+        st.write("Offensive and defensive team statistics coming soon.")
+
+    with players_tab:
+        st.subheader("Players")
+        st.write("Starters, key players, and player statistics coming soon.")
+
+    with matchup_tab:
+        st.subheader("Matchup")
+        st.write("Matchup advantages and team comparisons coming soon.")
+
+    with injuries_tab:
+        st.subheader("Injuries")
+        st.write("Injury reports coming soon.")
+
+    with weather_tab:
+        st.subheader("Weather")
+        st.write("Game-day weather information coming soon.")
+
+    with betting_tab:
+        st.subheader("Betting")
+        st.write("Lines and implied probabilities coming soon.")
+
+    with history_tab:
+        st.subheader("Head-to-Head")
+
+        if head_to_head:
+
+            for (
+                h2h_season,
+                h2h_date,
+                h2h_away_team,
+                h2h_away_score,
+                h2h_home_team,
+                h2h_home_score
+            ) in head_to_head:
+
+                st.markdown(
+                    f"**{h2h_away_team} {h2h_away_score} "
+                    f"— {h2h_home_team} {h2h_home_score}**"
+                )
+
+                st.caption(
+                    h2h_date.astimezone(
+                        ZoneInfo("America/New_York")
+                    ).strftime("%B %d, %Y")
+                )
+
+        else:
+            st.write("No previous meetings found.")
+    st.stop()
 
 # -------------------------
 # SCHEDULE PAGE
