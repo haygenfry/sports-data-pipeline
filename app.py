@@ -161,6 +161,219 @@ def get_team_scoring_profile(cursor, team_id, season, game_date):
         "last_three_ppg_allowed": last_three_points_against / last_three_count
     }
 
+def get_team_boxscore_profile(cursor, team_id, season, game_date):
+    cursor.execute(
+        """
+        SELECT
+            s.total_yards,
+            s.passing_yards,
+            s.rushing_yards,
+            s.yards_per_play,
+            s.first_downs,
+            s.turnovers,
+            s.third_down_eff,
+            s.red_zone_eff,
+            s.possession_time
+        FROM nfl_team_game_stats s
+        JOIN nfl_games g
+            ON s.game_id = g.game_id
+        WHERE s.team_id = %s
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY g.game_date;
+        """,
+        (team_id, season, game_date)
+    )
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        return None
+
+    total_yards = 0
+    passing_yards = 0
+    rushing_yards = 0
+    yards_per_play = 0
+    first_downs = 0
+    turnovers = 0
+
+    third_down_made = 0
+    third_down_attempts = 0
+
+    red_zone_made = 0
+    red_zone_attempts = 0
+
+    possession_seconds = 0
+
+    for (
+        game_total_yards,
+        game_passing_yards,
+        game_rushing_yards,
+        game_yards_per_play,
+        game_first_downs,
+        game_turnovers,
+        game_third_down_eff,
+        game_red_zone_eff,
+        game_possession_time
+    ) in rows:
+
+        total_yards += game_total_yards
+        passing_yards += game_passing_yards
+        rushing_yards += game_rushing_yards
+        yards_per_play += float(game_yards_per_play)
+        first_downs += game_first_downs
+        turnovers += game_turnovers
+
+        third_made, third_attempts = game_third_down_eff.split("-")
+        third_down_made += int(third_made)
+        third_down_attempts += int(third_attempts)
+
+        red_made, red_attempts = game_red_zone_eff.split("-")
+        red_zone_made += int(red_made)
+        red_zone_attempts += int(red_attempts)
+
+        minutes, seconds = game_possession_time.split(":")
+        possession_seconds += int(minutes) * 60 + int(seconds)
+
+    games_played = len(rows)
+
+    average_possession_seconds = possession_seconds / games_played
+
+    average_possession_minutes = int(
+        average_possession_seconds // 60
+    )
+
+    average_possession_remaining_seconds = int(
+        average_possession_seconds % 60
+    )
+
+    average_possession = (
+        f"{average_possession_minutes}:"
+        f"{average_possession_remaining_seconds:02d}"
+    )
+
+    return {
+        "total_yards_per_game": total_yards / games_played,
+        "passing_yards_per_game": passing_yards / games_played,
+        "rushing_yards_per_game": rushing_yards / games_played,
+        "yards_per_play": yards_per_play / games_played,
+        "first_downs_per_game": first_downs / games_played,
+        "turnovers_per_game": turnovers / games_played,
+
+        "third_down_pct": (
+            third_down_made / third_down_attempts
+            if third_down_attempts
+            else 0
+        ),
+
+        "red_zone_pct": (
+            red_zone_made / red_zone_attempts
+            if red_zone_attempts
+            else 0
+        ),
+
+        "average_possession": average_possession
+    }
+
+def get_team_defensive_profile(cursor, team_id, season, game_date):
+    cursor.execute(
+        """
+        SELECT
+            opponent.total_yards,
+            opponent.passing_yards,
+            opponent.rushing_yards,
+            opponent.yards_per_play,
+            opponent.first_downs,
+            opponent.turnovers,
+            opponent.third_down_eff,
+            opponent.red_zone_eff,
+            team.defensive_touchdowns
+        FROM nfl_team_game_stats team
+        JOIN nfl_games g
+            ON team.game_id = g.game_id
+        JOIN nfl_team_game_stats opponent
+            ON team.game_id = opponent.game_id
+            AND team.team_id <> opponent.team_id
+        WHERE team.team_id = %s
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY g.game_date;
+        """,
+        (team_id, season, game_date)
+    )
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        return None
+
+    total_yards_allowed = 0
+    passing_yards_allowed = 0
+    rushing_yards_allowed = 0
+    yards_per_play_allowed = 0
+    first_downs_allowed = 0
+    takeaways = 0
+    defensive_touchdowns = 0
+
+    opponent_third_down_made = 0
+    opponent_third_down_attempts = 0
+
+    opponent_red_zone_made = 0
+    opponent_red_zone_attempts = 0
+
+    for (
+        opponent_total_yards,
+        opponent_passing_yards,
+        opponent_rushing_yards,
+        opponent_yards_per_play,
+        opponent_first_downs,
+        opponent_turnovers,
+        opponent_third_down_eff,
+        opponent_red_zone_eff,
+        game_defensive_touchdowns
+    ) in rows:
+
+        total_yards_allowed += opponent_total_yards
+        passing_yards_allowed += opponent_passing_yards
+        rushing_yards_allowed += opponent_rushing_yards
+        yards_per_play_allowed += float(opponent_yards_per_play)
+        first_downs_allowed += opponent_first_downs
+
+        takeaways += opponent_turnovers
+        defensive_touchdowns += game_defensive_touchdowns
+
+        third_made, third_attempts = opponent_third_down_eff.split("-")
+        opponent_third_down_made += int(third_made)
+        opponent_third_down_attempts += int(third_attempts)
+
+        red_made, red_attempts = opponent_red_zone_eff.split("-")
+        opponent_red_zone_made += int(red_made)
+        opponent_red_zone_attempts += int(red_attempts)
+
+    games_played = len(rows)
+
+    return {
+        "yards_allowed_per_game": total_yards_allowed / games_played,
+        "passing_yards_allowed_per_game": passing_yards_allowed / games_played,
+        "rushing_yards_allowed_per_game": rushing_yards_allowed / games_played,
+        "yards_per_play_allowed": yards_per_play_allowed / games_played,
+        "first_downs_allowed_per_game": first_downs_allowed / games_played,
+        "takeaways_per_game": takeaways / games_played,
+        "opponent_third_down_pct": (
+            opponent_third_down_made / opponent_third_down_attempts
+            if opponent_third_down_attempts
+            else 0
+        ),
+        "opponent_red_zone_pct": (
+            opponent_red_zone_made / opponent_red_zone_attempts
+            if opponent_red_zone_attempts
+            else 0
+        ),
+        "defensive_touchdowns": defensive_touchdowns
+    }
+
 connection = psycopg2.connect(
     host="localhost",
     port=5432,
@@ -311,6 +524,34 @@ if st.session_state["selected_game"]:
         game_date
     )
 
+    away_boxscore = get_team_boxscore_profile(
+        cursor,
+        away_team_id,
+        2026,
+        game_date
+    )
+
+    home_boxscore = get_team_boxscore_profile(
+        cursor,
+        home_team_id,
+        2026,
+        game_date
+    )
+
+    away_defense = get_team_defensive_profile(
+        cursor,
+        away_team_id,
+        2026,
+        game_date
+    )
+
+    home_defense = get_team_defensive_profile(
+        cursor,
+        home_team_id,
+        2026,
+        game_date
+    )
+
     if st.button("← Back to Schedule"):
         st.session_state["selected_game"] = None
         st.rerun()
@@ -428,6 +669,29 @@ if st.session_state["selected_game"]:
                     f"{away_scoring['last_three_ppg_allowed']:.1f}"
                 )
 
+            if away_boxscore:
+                st.write(f"Total Yards/Game: {away_boxscore['total_yards_per_game']:.1f}")
+                st.write(f"Passing Yards/Game: {away_boxscore['passing_yards_per_game']:.1f}")
+                st.write(f"Rushing Yards/Game: {away_boxscore['rushing_yards_per_game']:.1f}")
+                st.write(f"Yards/Play: {away_boxscore['yards_per_play']:.1f}")
+                st.write(f"First Downs/Game: {away_boxscore['first_downs_per_game']:.1f}")
+                st.write(f"Turnovers/Game: {away_boxscore['turnovers_per_game']:.1f}")
+                st.write(f"Third Down %: {away_boxscore['third_down_pct'] * 100:.1f}%")
+                st.write(f"Red Zone %: {away_boxscore['red_zone_pct'] * 100:.1f}%")
+                st.write(f"Avg. Possession: {away_boxscore['average_possession']}")
+
+            if away_defense:
+                st.markdown("#### Defense")
+                st.write(f"Yards Allowed/Game: {away_defense['yards_allowed_per_game']:.1f}")
+                st.write(f"Pass Yards Allowed/Game: {away_defense['passing_yards_allowed_per_game']:.1f}")
+                st.write(f"Rush Yards Allowed/Game: {away_defense['rushing_yards_allowed_per_game']:.1f}")
+                st.write(f"Yards/Play Allowed: {away_defense['yards_per_play_allowed']:.1f}")
+                st.write(f"First Downs Allowed/Game: {away_defense['first_downs_allowed_per_game']:.1f}")
+                st.write(f"Takeaways/Game: {away_defense['takeaways_per_game']:.1f}")
+                st.write(f"Opponent Third Down %: {away_defense['opponent_third_down_pct'] * 100:.1f}%")
+                st.write(f"Opponent Red Zone %: {away_defense['opponent_red_zone_pct'] * 100:.1f}%")
+                st.write(f"Defensive TDs: {away_defense['defensive_touchdowns']}")
+
             else:
                 st.write("No 2026 games played.")
 
@@ -452,6 +716,29 @@ if st.session_state["selected_game"]:
                     f"Last 3 PPG Allowed: "
                     f"{home_scoring['last_three_ppg_allowed']:.1f}"
                 )
+
+            if home_boxscore:
+                st.write(f"Total Yards/Game: {home_boxscore['total_yards_per_game']:.1f}")
+                st.write(f"Passing Yards/Game: {home_boxscore['passing_yards_per_game']:.1f}")
+                st.write(f"Rushing Yards/Game: {home_boxscore['rushing_yards_per_game']:.1f}")
+                st.write(f"Yards/Play: {home_boxscore['yards_per_play']:.1f}")
+                st.write(f"First Downs/Game: {home_boxscore['first_downs_per_game']:.1f}")
+                st.write(f"Turnovers/Game: {home_boxscore['turnovers_per_game']:.1f}")
+                st.write(f"Third Down %: {home_boxscore['third_down_pct'] * 100:.1f}%")
+                st.write(f"Red Zone %: {home_boxscore['red_zone_pct'] * 100:.1f}%")
+                st.write(f"Avg. Possession: {home_boxscore['average_possession']}")
+
+            if home_defense:
+                st.markdown("#### Defense")
+                st.write(f"Yards Allowed/Game: {home_defense['yards_allowed_per_game']:.1f}")
+                st.write(f"Pass Yards Allowed/Game: {home_defense['passing_yards_allowed_per_game']:.1f}")
+                st.write(f"Rush Yards Allowed/Game: {home_defense['rushing_yards_allowed_per_game']:.1f}")
+                st.write(f"Yards/Play Allowed: {home_defense['yards_per_play_allowed']:.1f}")
+                st.write(f"First Downs Allowed/Game: {home_defense['first_downs_allowed_per_game']:.1f}")
+                st.write(f"Takeaways/Game: {home_defense['takeaways_per_game']:.1f}")
+                st.write(f"Opponent Third Down %: {home_defense['opponent_third_down_pct'] * 100:.1f}%")
+                st.write(f"Opponent Red Zone %: {home_defense['opponent_red_zone_pct'] * 100:.1f}%")
+                st.write(f"Defensive TDs: {home_defense['defensive_touchdowns']}")
 
             else:
                 st.write("No 2026 games played.")
