@@ -70,6 +70,97 @@ def get_head_to_head(cursor, team_1_id, team_2_id, game_date):
 
     return cursor.fetchall()
 
+def get_team_scoring_profile(cursor, team_id, season, game_date):
+    cursor.execute(
+        """
+        SELECT
+            home_team_id,
+            home_score,
+            away_team_id,
+            away_score,
+            game_date
+        FROM nfl_games
+        WHERE completed = TRUE
+          AND season = %s
+          AND game_date < %s
+          AND (
+              home_team_id = %s
+              OR away_team_id = %s
+          )
+        ORDER BY game_date;
+        """,
+        (season, game_date, team_id, team_id)
+    )
+
+    games = cursor.fetchall()
+
+    if not games:
+        return None
+
+    points_for = 0
+    points_against = 0
+    wins = 0
+
+    home_points_for = 0
+    home_games = 0
+
+    road_points_for = 0
+    road_games = 0
+
+    for home_team_id, home_score, away_team_id, away_score, _ in games:
+
+        if home_team_id == team_id:
+            points_for += home_score
+            points_against += away_score
+
+            home_points_for += home_score
+            home_games += 1
+
+            if home_score > away_score:
+                wins += 1
+
+        else:
+            points_for += away_score
+            points_against += home_score
+
+            road_points_for += away_score
+            road_games += 1
+
+            if away_score > home_score:
+                wins += 1
+
+    games_played = len(games)
+
+    last_three_games = games[-3:]
+
+    last_three_points_for = 0
+    last_three_points_against = 0
+
+    for home_team_id, home_score, away_team_id, away_score, _ in last_three_games:
+
+        if home_team_id == team_id:
+            last_three_points_for += home_score
+            last_three_points_against += away_score
+        else:
+            last_three_points_for += away_score
+            last_three_points_against += home_score
+
+    last_three_count = len(last_three_games)
+
+    return {
+        "games_played": games_played,
+        "ppg": points_for / games_played,
+        "ppg_allowed": points_against / games_played,
+        "scoring_margin": (points_for - points_against) / games_played,
+        "win_pct": wins / games_played,
+
+        "home_ppg": home_points_for / home_games if home_games else None,
+        "road_ppg": road_points_for / road_games if road_games else None,
+
+        "last_three_ppg": last_three_points_for / last_three_count,
+        "last_three_ppg_allowed": last_three_points_against / last_three_count
+    }
+
 connection = psycopg2.connect(
     host="localhost",
     port=5432,
@@ -206,6 +297,20 @@ if st.session_state["selected_game"]:
         game_date
     )
 
+    away_scoring = get_team_scoring_profile(
+        cursor,
+        away_team_id,
+        2026,
+        game_date
+    )
+
+    home_scoring = get_team_scoring_profile(
+        cursor,
+        home_team_id,
+        2026,
+        game_date
+    )
+
     if st.button("← Back to Schedule"):
         st.session_state["selected_game"] = None
         st.rerun()
@@ -298,7 +403,58 @@ if st.session_state["selected_game"]:
 
     with team_stats_tab:
         st.subheader("Team Stats")
-        st.write("Offensive and defensive team statistics coming soon.")
+
+        away_stats_col, home_stats_col = st.columns(2)
+
+        with away_stats_col:
+            st.markdown(f"### {away_team}")
+
+            if away_scoring:
+                st.write(f"Games Played: {away_scoring['games_played']}")
+                st.write(f"Points/Game: {away_scoring['ppg']:.1f}")
+                st.write(f"Points Allowed/Game: {away_scoring['ppg_allowed']:.1f}")
+                st.write(f"Scoring Margin/Game: {away_scoring['scoring_margin']:+.1f}")
+                st.write(f"Win %: {away_scoring['win_pct']:.3f}")
+
+                if away_scoring["home_ppg"] is not None:
+                    st.write(f"Home PPG: {away_scoring['home_ppg']:.1f}")
+
+                if away_scoring["road_ppg"] is not None:
+                    st.write(f"Road PPG: {away_scoring['road_ppg']:.1f}")
+
+                st.write(f"Last 3 PPG: {away_scoring['last_three_ppg']:.1f}")
+                st.write(
+                    f"Last 3 PPG Allowed: "
+                    f"{away_scoring['last_three_ppg_allowed']:.1f}"
+                )
+
+            else:
+                st.write("No 2026 games played.")
+
+        with home_stats_col:
+            st.markdown(f"### {home_team}")
+
+            if home_scoring:
+                st.write(f"Games Played: {home_scoring['games_played']}")
+                st.write(f"Points/Game: {home_scoring['ppg']:.1f}")
+                st.write(f"Points Allowed/Game: {home_scoring['ppg_allowed']:.1f}")
+                st.write(f"Scoring Margin/Game: {home_scoring['scoring_margin']:+.1f}")
+                st.write(f"Win %: {home_scoring['win_pct']:.3f}")
+
+                if home_scoring["home_ppg"] is not None:
+                    st.write(f"Home PPG: {home_scoring['home_ppg']:.1f}")
+
+                if home_scoring["road_ppg"] is not None:
+                    st.write(f"Road PPG: {home_scoring['road_ppg']:.1f}")
+
+                st.write(f"Last 3 PPG: {home_scoring['last_three_ppg']:.1f}")
+                st.write(
+                    f"Last 3 PPG Allowed: "
+                    f"{home_scoring['last_three_ppg_allowed']:.1f}"
+                )
+
+            else:
+                st.write("No 2026 games played.")
 
     with players_tab:
         st.subheader("Players")
