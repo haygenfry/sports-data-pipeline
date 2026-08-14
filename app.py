@@ -190,6 +190,7 @@ def get_team_boxscore_profile(cursor, team_id, season, game_date):
 
     if not rows:
         return None
+    last_three_rows = rows[-3:]
 
     total_yards = 0
     passing_yards = 0
@@ -253,6 +254,16 @@ def get_team_boxscore_profile(cursor, team_id, season, game_date):
         f"{average_possession_remaining_seconds:02d}"
     )
 
+    last_three_total_yards = sum(
+        row[0] for row in last_three_rows
+    )
+
+    last_three_turnovers = sum(
+        row[5] for row in last_three_rows
+    )
+
+    last_three_games = len(last_three_rows)
+
     return {
         "total_yards_per_game": total_yards / games_played,
         "passing_yards_per_game": passing_yards / games_played,
@@ -273,7 +284,17 @@ def get_team_boxscore_profile(cursor, team_id, season, game_date):
             else 0
         ),
 
-        "average_possession": average_possession
+        "average_possession": average_possession,
+
+        "last_three_yards_per_game": (
+            last_three_total_yards / last_three_games
+        ),
+
+        "last_three_turnovers_per_game": (
+            last_three_turnovers / last_three_games
+        ),
+
+        "last_three_turnovers": last_three_turnovers
     }
 
 def get_team_defensive_profile(cursor, team_id, season, game_date):
@@ -308,6 +329,7 @@ def get_team_defensive_profile(cursor, team_id, season, game_date):
 
     if not rows:
         return None
+    last_three_rows = rows[-3:]
 
     total_yards_allowed = 0
     passing_yards_allowed = 0
@@ -354,6 +376,16 @@ def get_team_defensive_profile(cursor, team_id, season, game_date):
 
     games_played = len(rows)
 
+    last_three_yards_allowed = sum(
+        row[0] for row in last_three_rows
+    )
+
+    last_three_takeaways = sum(
+        row[5] for row in last_three_rows
+    )
+
+    last_three_games = len(last_three_rows)
+
     return {
         "yards_allowed_per_game": total_yards_allowed / games_played,
         "passing_yards_allowed_per_game": passing_yards_allowed / games_played,
@@ -371,7 +403,17 @@ def get_team_defensive_profile(cursor, team_id, season, game_date):
             if opponent_red_zone_attempts
             else 0
         ),
-        "defensive_touchdowns": defensive_touchdowns
+        "defensive_touchdowns": defensive_touchdowns,
+
+        "last_three_yards_allowed_per_game": (
+            last_three_yards_allowed / last_three_games
+        ),
+
+        "last_three_takeaways_per_game": (
+            last_three_takeaways / last_three_games
+        ),
+
+        "last_three_takeaways": last_three_takeaways
     }
 
 connection = psycopg2.connect(
@@ -552,6 +594,22 @@ if st.session_state["selected_game"]:
         game_date
     )
 
+    away_last_three_turnover_diff = None
+
+    if away_boxscore and away_defense:
+        away_last_three_turnover_diff = (
+            away_defense["last_three_takeaways"]
+            - away_boxscore["last_three_turnovers"]
+        )
+
+    home_last_three_turnover_diff = None
+
+    if home_boxscore and home_defense:
+        home_last_three_turnover_diff = (
+            home_defense["last_three_takeaways"]
+            - home_boxscore["last_three_turnovers"]
+        )
+
     if st.button("← Back to Schedule"):
         st.session_state["selected_game"] = None
         st.rerun()
@@ -695,6 +753,24 @@ if st.session_state["selected_game"]:
             else:
                 st.write("No 2026 games played.")
 
+            if home_boxscore and home_defense:
+                st.markdown("#### Recent Form")
+
+                st.write(
+                    f"Last 3 Yards/Game: "
+                    f"{home_boxscore['last_three_yards_per_game']:.1f}"
+                )
+
+                st.write(
+                    f"Last 3 Yards Allowed/Game: "
+                    f"{home_defense['last_three_yards_allowed_per_game']:.1f}"
+                )
+
+                st.write(
+                    f"Last 3 Turnover Differential: "
+                    f"{away_last_three_turnover_diff:+d}"
+                )
+
         with home_stats_col:
             st.markdown(f"### {home_team}")
 
@@ -742,6 +818,24 @@ if st.session_state["selected_game"]:
 
             else:
                 st.write("No 2026 games played.")
+
+            if home_boxscore and home_defense:
+                st.markdown("#### Recent Form")
+
+                st.write(
+                    f"Last 3 Yards/Game: "
+                    f"{home_boxscore['last_three_yards_per_game']:.1f}"
+                )
+
+                st.write(
+                    f"Last 3 Yards Allowed/Game: "
+                    f"{home_defense['last_three_yards_allowed_per_game']:.1f}"
+                )
+
+                st.write(
+                    f"Last 3 Turnover Differential: "
+                    f"{away_last_three_turnover_diff:+d}"
+                )
 
     with players_tab:
         st.subheader("Players")
