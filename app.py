@@ -2,6 +2,8 @@ import streamlit as st
 import psycopg2
 from zoneinfo import ZoneInfo
 
+DISPLAY_SEASON = 2026
+
 def get_last_three(cursor, team_id, season, game_date):
     cursor.execute(
         """
@@ -1566,6 +1568,442 @@ def render_offensive_depth_player(
             f"{profile['receiving_yards_per_game']:.1f} YDS/G"
         )
 
+def get_matchup_comparison(offense, defense):
+    if not offense or not defense:
+        return None
+
+    return {
+        "total_yards": (
+            offense["total_yards_per_game"],
+            defense["yards_allowed_per_game"]
+        ),
+        "passing_yards": (
+            offense["passing_yards_per_game"],
+            defense["passing_yards_allowed_per_game"]
+        ),
+        "rushing_yards": (
+            offense["rushing_yards_per_game"],
+            defense["rushing_yards_allowed_per_game"]
+        ),
+        "yards_per_play": (
+            offense["yards_per_play"],
+            defense["yards_per_play_allowed"]
+        ),
+        "third_down": (
+            offense["third_down_pct"],
+            defense["opponent_third_down_pct"]
+        ),
+        "red_zone": (
+            offense["red_zone_pct"],
+            defense["opponent_red_zone_pct"]
+        ),
+        "turnovers_takeaways": (
+            offense["turnovers_per_game"],
+            defense["takeaways_per_game"]
+        )
+    }
+
+def get_matchup_advantages(comparison):
+    if not comparison:
+        return None
+
+    advantages = {}
+
+    # Higher offense values are generally better here.
+    advantages["total_yards"] = (
+        comparison["total_yards"][0]
+        - comparison["total_yards"][1]
+    )
+
+    advantages["passing_yards"] = (
+        comparison["passing_yards"][0]
+        - comparison["passing_yards"][1]
+    )
+
+    advantages["rushing_yards"] = (
+        comparison["rushing_yards"][0]
+        - comparison["rushing_yards"][1]
+    )
+
+    advantages["yards_per_play"] = (
+        comparison["yards_per_play"][0]
+        - comparison["yards_per_play"][1]
+    )
+
+    advantages["third_down"] = (
+        comparison["third_down"][0]
+        - comparison["third_down"][1]
+    )
+
+    advantages["red_zone"] = (
+        comparison["red_zone"][0]
+        - comparison["red_zone"][1]
+    )
+
+    # Lower offensive turnovers are better,
+    # while higher defensive takeaways are better.
+    # Negative = favorable for offense.
+    advantages["turnover_pressure"] = (
+        comparison["turnovers_takeaways"][0]
+        - comparison["turnovers_takeaways"][1]
+    )
+
+    return advantages
+
+def get_league_matchup_baselines(
+    cursor,
+    season,
+    game_date
+):
+    cursor.execute(
+        """
+        SELECT
+            AVG(s.total_yards),
+            AVG(s.passing_yards),
+            AVG(s.rushing_yards),
+            AVG(s.yards_per_play),
+            SUM(
+                SPLIT_PART(s.third_down_eff, '-', 1)::NUMERIC
+            )
+            /
+            NULLIF(
+                SUM(
+                    SPLIT_PART(s.third_down_eff, '-', 2)::NUMERIC
+                ),
+                0
+            ),
+            SUM(
+                SPLIT_PART(s.red_zone_eff, '-', 1)::NUMERIC
+            )
+            /
+            NULLIF(
+                SUM(
+                    SPLIT_PART(s.red_zone_eff, '-', 2)::NUMERIC
+                ),
+                0
+            ),
+            AVG(s.turnovers)
+        FROM nfl_team_game_stats s
+        JOIN nfl_games g
+            ON s.game_id = g.game_id
+        WHERE g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s;
+        """,
+        (season, game_date)
+    )
+
+    row = cursor.fetchone()
+
+    if not row or row[0] is None:
+        return None
+
+    return {
+        "total_yards": float(row[0]),
+        "passing_yards": float(row[1]),
+        "rushing_yards": float(row[2]),
+        "yards_per_play": float(row[3]),
+        "third_down": float(row[4]) if row[4] is not None else None,
+        "red_zone": float(row[5]) if row[5] is not None else None,
+        "turnovers": float(row[6])
+    }
+
+def classify_matchup_edge(
+    offense_value,
+    defense_value,
+    league_value,
+    lower_is_better=False
+):
+    if (
+        offense_value is None
+        or defense_value is None
+        or league_value is None
+    ):
+        return None
+
+    if lower_is_better:
+        offense_strength = league_value - offense_value
+        defense_strength = defense_value - league_value
+    else:
+        offense_strength = offense_value - league_value
+        defense_strength = league_value - defense_value
+
+    if offense_strength > 0 and defense_strength < 0:
+        return "Offense edge"
+
+    if offense_strength < 0 and defense_strength > 0:
+        return "Defense edge"
+
+    if offense_strength > 0 and defense_strength > 0:
+        return "Strength vs strength"
+
+    if offense_strength < 0 and defense_strength < 0:
+        return "Weakness vs weakness"
+
+    return "Neutral"
+
+def get_matchup_edges(
+    comparison,
+    league_baselines
+):
+    if not comparison or not league_baselines:
+        return None
+
+    return {
+        "total_yards": classify_matchup_edge(
+            comparison["total_yards"][0],
+            comparison["total_yards"][1],
+            league_baselines["total_yards"]
+        ),
+
+        "passing_yards": classify_matchup_edge(
+            comparison["passing_yards"][0],
+            comparison["passing_yards"][1],
+            league_baselines["passing_yards"]
+        ),
+
+        "rushing_yards": classify_matchup_edge(
+            comparison["rushing_yards"][0],
+            comparison["rushing_yards"][1],
+            league_baselines["rushing_yards"]
+        ),
+
+        "yards_per_play": classify_matchup_edge(
+            comparison["yards_per_play"][0],
+            comparison["yards_per_play"][1],
+            league_baselines["yards_per_play"]
+        ),
+
+        "third_down": classify_matchup_edge(
+            comparison["third_down"][0],
+            comparison["third_down"][1],
+            league_baselines["third_down"]
+        ),
+
+        "red_zone": classify_matchup_edge(
+            comparison["red_zone"][0],
+            comparison["red_zone"][1],
+            league_baselines["red_zone"]
+        ),
+
+        "turnovers": classify_matchup_edge(
+            comparison["turnovers_takeaways"][0],
+            comparison["turnovers_takeaways"][1],
+            league_baselines["turnovers"],
+            lower_is_better=True
+        )
+    }
+
+def build_matchup_summary(
+    offense_team,
+    defense_team,
+    edges
+):
+    if not edges:
+        return None
+
+    offense_edges = [
+        metric
+        for metric, result in edges.items()
+        if result == "Offense edge"
+    ]
+
+    defense_edges = [
+        metric
+        for metric, result in edges.items()
+        if result == "Defense edge"
+    ]
+
+    strength_vs_strength = [
+        metric
+        for metric, result in edges.items()
+        if result == "Strength vs strength"
+    ]
+
+    weakness_vs_weakness = [
+        metric
+        for metric, result in edges.items()
+        if result == "Weakness vs weakness"
+    ]
+
+    if len(offense_edges) > len(defense_edges):
+        summary = (
+            f"{offense_team}'s offense holds the broader matchup edge."
+        )
+
+    elif len(defense_edges) > len(offense_edges):
+        summary = (
+            f"{defense_team}'s defense holds the broader matchup edge."
+        )
+
+    else:
+        summary = (
+            "The matchup is relatively balanced across the major categories."
+        )
+
+    if strength_vs_strength:
+        summary += (
+            f" Strength vs strength shows up in "
+            f"{', '.join(strength_vs_strength)}."
+        )
+
+    if weakness_vs_weakness:
+        summary += (
+            f" Weakness vs weakness shows up in "
+            f"{', '.join(weakness_vs_weakness)}."
+        )
+
+    return summary
+
+def render_matchup_table(
+    offense_team,
+    defense_team,
+    comparison,
+    edges
+):
+    st.markdown(
+        f"### {offense_team} Offense vs {defense_team} Defense"
+    )
+
+    if not comparison or not edges:
+        st.write("No matchup data available yet.")
+        return
+
+    st.caption(
+        f"{offense_team}'s offensive production compared with "
+        f"{defense_team}'s defensive performance entering this game."
+    )
+
+    summary = build_matchup_summary(
+        offense_team,
+        defense_team,
+        edges
+    )
+
+    if summary:
+        st.markdown("#### Key Matchup Read")
+        st.write(summary)
+
+    # -------------------------
+    # HEADER
+    # -------------------------
+
+    metric_col, offense_col, defense_col, read_col = st.columns(
+        [1.4, 1, 1, 1.4]
+    )
+
+    with metric_col:
+        st.markdown("**Metric**")
+
+    with offense_col:
+        st.markdown(f"**{offense_team} Offense**")
+
+    with defense_col:
+        st.markdown(f"**{defense_team} Defense**")
+
+    with read_col:
+        st.markdown("**Matchup Read**")
+
+    st.divider()
+
+    rows = [
+        (
+            "Total Yards",
+            comparison["total_yards"][0],
+            comparison["total_yards"][1],
+            edges["total_yards"],
+            "yards"
+        ),
+        (
+            "Passing",
+            comparison["passing_yards"][0],
+            comparison["passing_yards"][1],
+            edges["passing_yards"],
+            "yards"
+        ),
+        (
+            "Rushing",
+            comparison["rushing_yards"][0],
+            comparison["rushing_yards"][1],
+            edges["rushing_yards"],
+            "yards"
+        ),
+        (
+            "Yards / Play",
+            comparison["yards_per_play"][0],
+            comparison["yards_per_play"][1],
+            edges["yards_per_play"],
+            "decimal"
+        ),
+        (
+            "3rd Down",
+            comparison["third_down"][0],
+            comparison["third_down"][1],
+            edges["third_down"],
+            "percent"
+        ),
+        (
+            "Red Zone",
+            comparison["red_zone"][0],
+            comparison["red_zone"][1],
+            edges["red_zone"],
+            "percent"
+        ),
+        (
+            "Turnovers / Takeaways",
+            comparison["turnovers_takeaways"][0],
+            comparison["turnovers_takeaways"][1],
+            edges["turnovers"],
+            "turnovers"
+        )
+    ]
+
+    for (
+        metric,
+        offense_value,
+        defense_value,
+        matchup_read,
+        value_type
+    ) in rows:
+
+        metric_col, offense_col, defense_col, read_col = st.columns(
+            [1.4, 1, 1, 1.4]
+        )
+
+        with metric_col:
+            st.write(metric)
+
+        with offense_col:
+
+            if value_type == "percent":
+                st.write(f"{offense_value * 100:.1f}%")
+
+            elif value_type == "decimal":
+                st.write(f"{offense_value:.2f}")
+
+            elif value_type == "turnovers":
+                st.write(f"{offense_value:.2f} TO/G")
+
+            else:
+                st.write(f"{offense_value:.1f}")
+
+        with defense_col:
+
+            if value_type == "percent":
+                st.write(f"{defense_value * 100:.1f}% allowed")
+
+            elif value_type == "decimal":
+                st.write(f"{defense_value:.2f} allowed")
+
+            elif value_type == "turnovers":
+                st.write(f"{defense_value:.2f} TAKE/G")
+
+            else:
+                st.write(f"{defense_value:.1f} allowed")
+
+        with read_col:
+            st.write(matchup_read)
+
 OFFENSIVE_DISPLAY_ORDER = [
     "qb",
     "rb",
@@ -1620,7 +2058,7 @@ connection = psycopg2.connect(
     password="nfl_password"
 )
 
-st.title("NFL 2026 Schedule")
+st.title(f"NFL {DISPLAY_SEASON} Schedule")
 
 selected_week = st.selectbox(
     "Select Week",
@@ -1673,7 +2111,7 @@ cursor.execute(
 
     ORDER BY g.game_date;
     """,
-    (2026, selected_week)
+    (DISPLAY_SEASON, selected_week)
 )
 
 games = cursor.fetchall()
@@ -1730,14 +2168,14 @@ if st.session_state["selected_game"]:
     away_last_three = get_last_three(
         cursor,
         away_team_id,
-        2026,
+        DISPLAY_SEASON,
         game_date
     )
 
     home_last_three = get_last_three(
         cursor,
         home_team_id,
-        2026,
+        DISPLAY_SEASON,
         game_date
     )
 
@@ -1751,43 +2189,77 @@ if st.session_state["selected_game"]:
     away_scoring = get_team_scoring_profile(
         cursor,
         away_team_id,
-        2026,
+        DISPLAY_SEASON,
         game_date
     )
 
     home_scoring = get_team_scoring_profile(
         cursor,
         home_team_id,
-        2026,
+        DISPLAY_SEASON,
         game_date
     )
 
     away_boxscore = get_team_boxscore_profile(
         cursor,
         away_team_id,
-        2026,
+        DISPLAY_SEASON,
         game_date
     )
 
     home_boxscore = get_team_boxscore_profile(
         cursor,
         home_team_id,
-        2026,
+        DISPLAY_SEASON,
         game_date
     )
 
     away_defense = get_team_defensive_profile(
         cursor,
         away_team_id,
-        2026,
+        DISPLAY_SEASON,
         game_date
     )
 
     home_defense = get_team_defensive_profile(
         cursor,
         home_team_id,
-        2026,
+        DISPLAY_SEASON,
         game_date
+    )
+
+    away_offense_vs_home_defense = get_matchup_comparison(
+        away_boxscore,
+        home_defense
+    )
+
+    home_offense_vs_away_defense = get_matchup_comparison(
+        home_boxscore,
+        away_defense
+    )
+
+    away_matchup_advantages = get_matchup_advantages(
+        away_offense_vs_home_defense
+    )
+
+    home_matchup_advantages = get_matchup_advantages(
+        home_offense_vs_away_defense
+    )
+
+    league_matchup_baselines = get_league_matchup_baselines(
+        cursor,
+        DISPLAY_SEASON,
+        game_date
+    )
+
+    away_matchup_edges = get_matchup_edges(
+        away_offense_vs_home_defense,
+        league_matchup_baselines
+    )
+
+    home_matchup_edges = get_matchup_edges(
+        home_offense_vs_away_defense,
+        league_matchup_baselines
     )
 
     away_offensive_starters = get_offensive_starters(
@@ -1824,7 +2296,7 @@ if st.session_state["selected_game"]:
         away_qb_profile = get_qb_profile(
             cursor,
             away_qb[2],
-            2026,
+            DISPLAY_SEASON,
             game_date
         )
 
@@ -1834,7 +2306,7 @@ if st.session_state["selected_game"]:
         home_qb_profile = get_qb_profile(
             cursor,
             home_qb[2],
-            2026,
+            DISPLAY_SEASON,
             game_date
         )
 
@@ -1862,7 +2334,7 @@ if st.session_state["selected_game"]:
         away_rb_profile = get_rb_profile(
             cursor,
             away_rb[2],
-            2026,
+            DISPLAY_SEASON,
             game_date
         )
 
@@ -1872,7 +2344,7 @@ if st.session_state["selected_game"]:
         home_rb_profile = get_rb_profile(
             cursor,
             home_rb[2],
-            2026,
+            DISPLAY_SEASON,
             game_date
         )
 
@@ -1894,7 +2366,7 @@ if st.session_state["selected_game"]:
         profile = get_receiving_profile(
             cursor,
             receiver[2],
-            2026,
+            DISPLAY_SEASON,
             game_date
         )
 
@@ -1909,7 +2381,7 @@ if st.session_state["selected_game"]:
         profile = get_receiving_profile(
             cursor,
             receiver[2],
-            2026,
+            DISPLAY_SEASON,
             game_date
         )
 
@@ -1984,7 +2456,7 @@ if st.session_state["selected_game"]:
             get_defensive_player_profile(
                 cursor,
                 player_id,
-                2026,
+                DISPLAY_SEASON,
                 game_date
             )
         )
@@ -1999,7 +2471,7 @@ if st.session_state["selected_game"]:
             get_defensive_player_profile(
                 cursor,
                 player_id,
-                2026,
+                DISPLAY_SEASON,
                 game_date
             )
         )
@@ -2033,7 +2505,7 @@ if st.session_state["selected_game"]:
             get_special_teams_profile(
                 cursor,
                 player_id,
-                2026,
+                DISPLAY_SEASON,
                 game_date
             )
         )
@@ -2048,7 +2520,7 @@ if st.session_state["selected_game"]:
             get_special_teams_profile(
                 cursor,
                 player_id,
-                2026,
+                DISPLAY_SEASON,
                 game_date
             )
         )
@@ -2116,7 +2588,7 @@ if st.session_state["selected_game"]:
             profile = get_qb_profile(
                 cursor,
                 player_id,
-                2026,
+                DISPLAY_SEASON,
                 game_date
             )
 
@@ -2124,7 +2596,7 @@ if st.session_state["selected_game"]:
             profile = get_rb_profile(
                 cursor,
                 player_id,
-                2026,
+                DISPLAY_SEASON,
                 game_date
             )
 
@@ -2132,7 +2604,7 @@ if st.session_state["selected_game"]:
             profile = get_receiving_profile(
                 cursor,
                 player_id,
-                2026,
+                DISPLAY_SEASON,
                 game_date
             )
 
@@ -2159,7 +2631,7 @@ if st.session_state["selected_game"]:
             profile = get_qb_profile(
                 cursor,
                 player_id,
-                2026,
+                DISPLAY_SEASON,
                 game_date
             )
 
@@ -2167,7 +2639,7 @@ if st.session_state["selected_game"]:
             profile = get_rb_profile(
                 cursor,
                 player_id,
-                2026,
+                DISPLAY_SEASON,
                 game_date
             )
 
@@ -2175,7 +2647,7 @@ if st.session_state["selected_game"]:
             profile = get_receiving_profile(
                 cursor,
                 player_id,
-                2026,
+                DISPLAY_SEASON,
                 game_date
             )
 
@@ -2188,7 +2660,7 @@ if st.session_state["selected_game"]:
         player[2]: get_defensive_player_profile(
             cursor,
             player[2],
-            2026,
+            DISPLAY_SEASON,
             game_date
         )
         for player in away_defensive_depth
@@ -2198,7 +2670,7 @@ if st.session_state["selected_game"]:
         player[2]: get_defensive_player_profile(
             cursor,
             player[2],
-            2026,
+            DISPLAY_SEASON,
             game_date
         )
         for player in home_defensive_depth
@@ -2208,7 +2680,7 @@ if st.session_state["selected_game"]:
         player[2]: get_special_teams_profile(
             cursor,
             player[2],
-            2026,
+            DISPLAY_SEASON,
             game_date
         )
         for player in away_special_teams_depth
@@ -2218,7 +2690,7 @@ if st.session_state["selected_game"]:
         player[2]: get_special_teams_profile(
             cursor,
             player[2],
-            2026,
+            DISPLAY_SEASON,
             game_date
         )
         for player in home_special_teams_depth
@@ -2413,7 +2885,7 @@ if st.session_state["selected_game"]:
                 st.write(f"Defensive TDs: {away_defense['defensive_touchdowns']}")
 
             else:
-                st.write("No 2026 games played.")
+                st.write(f"No {DISPLAY_SEASON} games played.")
 
             if away_boxscore and away_defense:
                 st.markdown("#### Recent Form")
@@ -2479,7 +2951,7 @@ if st.session_state["selected_game"]:
                 st.write(f"Defensive TDs: {home_defense['defensive_touchdowns']}")
 
             else:
-                st.write("No 2026 games played.")
+                st.write(f"No {DISPLAY_SEASON} games played.")
 
             if home_boxscore and home_defense:
                 st.markdown("#### Recent Form")
@@ -2757,8 +3229,23 @@ if st.session_state["selected_game"]:
                             st.caption("No listed player")
 
     with matchup_tab:
-        st.subheader("Matchup")
-        st.write("Matchup advantages and team comparisons coming soon.")
+        st.subheader("Offense vs Defense")
+
+        render_matchup_table(
+            away_team,
+            home_team,
+            away_offense_vs_home_defense,
+            away_matchup_edges
+        )
+
+        st.divider()
+
+        render_matchup_table(
+            home_team,
+            away_team,
+            home_offense_vs_away_defense,
+            home_matchup_edges
+        )
 
     with injuries_tab:
         st.subheader("Injuries")
