@@ -416,6 +416,1202 @@ def get_team_defensive_profile(cursor, team_id, season, game_date):
         "last_three_takeaways": last_three_takeaways
     }
 
+def get_offensive_starters(cursor, team_id):
+    cursor.execute(
+        """
+        SELECT
+            d.position_slot,
+            d.position,
+            d.player_id,
+            d.player_name,
+            p.jersey,
+            p.status,
+            p.headshot
+        FROM nfl_depth_chart d
+        LEFT JOIN nfl_players p
+            ON d.player_id = p.player_id
+        WHERE d.team_id = %s
+          AND d.depth_order = 1
+          AND d.position_group = 'OFF'
+        ORDER BY d.position_slot;
+        """,
+        (team_id,)
+    )
+
+    return cursor.fetchall()
+
+
+def get_defensive_starters(cursor, team_id):
+    cursor.execute(
+        """
+        SELECT
+            d.position_slot,
+            d.position,
+            d.player_id,
+            d.player_name,
+            p.jersey,
+            p.status,
+            p.headshot
+        FROM nfl_depth_chart d
+        LEFT JOIN nfl_players p
+            ON d.player_id = p.player_id
+        WHERE d.team_id = %s
+          AND d.depth_order = 1
+          AND d.position_group = 'DEF'
+        ORDER BY d.position_slot;
+        """,
+        (team_id,)
+    )
+
+    return cursor.fetchall()
+
+
+def get_special_teams_starters(cursor, team_id):
+    cursor.execute(
+        """
+        SELECT
+            d.position_slot,
+            d.position,
+            d.player_id,
+            d.player_name,
+            p.jersey,
+            p.status,
+            p.headshot
+        FROM nfl_depth_chart d
+        LEFT JOIN nfl_players p
+            ON d.player_id = p.player_id
+        WHERE d.team_id = %s
+          AND d.depth_order = 1
+          AND d.position_group = 'ST'
+        ORDER BY d.position_slot;
+        """,
+        (team_id,)
+    )
+
+    return cursor.fetchall()
+
+def get_qb_profile(cursor, player_id, season, game_date):
+    cursor.execute(
+        """
+        SELECT
+            p.completions_attempts,
+            p.passing_yards,
+            p.passing_touchdowns,
+            p.passing_interceptions,
+            p.qbr,
+            p.passer_rating,
+            p.rushing_attempts,
+            p.rushing_yards,
+            p.rushing_touchdowns
+        FROM nfl_player_game_stats p
+        JOIN nfl_games g
+            ON p.game_id = g.game_id
+        WHERE p.player_id = %s
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY g.game_date;
+        """,
+        (player_id, season, game_date)
+    )
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        return None
+
+    completions = 0
+    attempts = 0
+    passing_yards = 0
+    passing_touchdowns = 0
+    interceptions = 0
+
+    rushing_attempts = 0
+    rushing_yards = 0
+    rushing_touchdowns = 0
+
+    qbr_values = []
+    passer_rating_values = []
+
+    for (
+        completions_attempts,
+        game_passing_yards,
+        game_passing_touchdowns,
+        game_interceptions,
+        qbr,
+        passer_rating,
+        game_rushing_attempts,
+        game_rushing_yards,
+        game_rushing_touchdowns
+    ) in rows:
+
+        if completions_attempts:
+            game_completions, game_attempts = (
+                completions_attempts.split("/")
+            )
+
+            completions += int(game_completions)
+            attempts += int(game_attempts)
+
+        if game_passing_yards is not None:
+            passing_yards += game_passing_yards
+
+        if game_passing_touchdowns is not None:
+            passing_touchdowns += game_passing_touchdowns
+
+        if game_interceptions is not None:
+            interceptions += game_interceptions
+
+        if qbr is not None:
+            qbr_values.append(float(qbr))
+
+        if passer_rating is not None:
+            passer_rating_values.append(float(passer_rating))
+
+        if game_rushing_attempts is not None:
+            rushing_attempts += game_rushing_attempts
+
+        if game_rushing_yards is not None:
+            rushing_yards += game_rushing_yards
+
+        if game_rushing_touchdowns is not None:
+            rushing_touchdowns += game_rushing_touchdowns
+
+    games_played = len(rows)
+
+    return {
+        "games_played": games_played,
+        "completions": completions,
+        "attempts": attempts,
+        "completion_pct": (
+            completions / attempts
+            if attempts
+            else 0
+        ),
+        "passing_yards": passing_yards,
+        "passing_yards_per_game": (
+            passing_yards / games_played
+        ),
+        "passing_touchdowns": passing_touchdowns,
+        "interceptions": interceptions,
+        "yards_per_attempt": (
+            passing_yards / attempts
+            if attempts
+            else 0
+        ),
+        "average_qbr": (
+            sum(qbr_values) / len(qbr_values)
+            if qbr_values
+            else None
+        ),
+        "average_passer_rating": (
+            sum(passer_rating_values) / len(passer_rating_values)
+            if passer_rating_values
+            else None
+        ),
+        "rushing_attempts": rushing_attempts,
+        "rushing_yards": rushing_yards,
+        "rushing_touchdowns": rushing_touchdowns
+    }
+
+def get_rb_profile(cursor, player_id, season, game_date):
+    cursor.execute(
+        """
+        SELECT
+            p.rushing_attempts,
+            p.rushing_yards,
+            p.rushing_touchdowns,
+            p.receptions,
+            p.receiving_yards,
+            p.receiving_touchdowns,
+            p.receiving_targets
+        FROM nfl_player_game_stats p
+        JOIN nfl_games g
+            ON p.game_id = g.game_id
+        WHERE p.player_id = %s
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY g.game_date;
+        """,
+        (player_id, season, game_date)
+    )
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        return None
+
+    rushing_attempts = 0
+    rushing_yards = 0
+    rushing_touchdowns = 0
+
+    receptions = 0
+    receiving_yards = 0
+    receiving_touchdowns = 0
+    receiving_targets = 0
+
+    for (
+        game_rushing_attempts,
+        game_rushing_yards,
+        game_rushing_touchdowns,
+        game_receptions,
+        game_receiving_yards,
+        game_receiving_touchdowns,
+        game_receiving_targets
+    ) in rows:
+
+        if game_rushing_attempts is not None:
+            rushing_attempts += game_rushing_attempts
+
+        if game_rushing_yards is not None:
+            rushing_yards += game_rushing_yards
+
+        if game_rushing_touchdowns is not None:
+            rushing_touchdowns += game_rushing_touchdowns
+
+        if game_receptions is not None:
+            receptions += game_receptions
+
+        if game_receiving_yards is not None:
+            receiving_yards += game_receiving_yards
+
+        if game_receiving_touchdowns is not None:
+            receiving_touchdowns += game_receiving_touchdowns
+
+        if game_receiving_targets is not None:
+            receiving_targets += game_receiving_targets
+
+    games_played = len(rows)
+
+    return {
+        "games_played": games_played,
+        "rushing_attempts": rushing_attempts,
+        "rushing_yards": rushing_yards,
+        "rushing_yards_per_game": (
+            rushing_yards / games_played
+        ),
+        "yards_per_carry": (
+            rushing_yards / rushing_attempts
+            if rushing_attempts
+            else 0
+        ),
+        "rushing_touchdowns": rushing_touchdowns,
+        "receptions": receptions,
+        "receiving_targets": receiving_targets,
+        "receiving_yards": receiving_yards,
+        "receiving_yards_per_game": (
+            receiving_yards / games_played
+        ),
+        "receiving_touchdowns": receiving_touchdowns,
+        "scrimmage_yards": (
+            rushing_yards + receiving_yards
+        ),
+        "total_touchdowns": (
+            rushing_touchdowns + receiving_touchdowns
+        )
+    }
+
+def get_receiving_profile(cursor, player_id, season, game_date):
+    cursor.execute(
+        """
+        SELECT
+            p.receptions,
+            p.receiving_targets,
+            p.receiving_yards,
+            p.receiving_touchdowns,
+            p.rushing_attempts,
+            p.rushing_yards,
+            p.rushing_touchdowns
+        FROM nfl_player_game_stats p
+        JOIN nfl_games g
+            ON p.game_id = g.game_id
+        WHERE p.player_id = %s
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY g.game_date;
+        """,
+        (player_id, season, game_date)
+    )
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        return None
+
+    receptions = 0
+    targets = 0
+    receiving_yards = 0
+    receiving_touchdowns = 0
+
+    rushing_attempts = 0
+    rushing_yards = 0
+    rushing_touchdowns = 0
+
+    for (
+        game_receptions,
+        game_targets,
+        game_receiving_yards,
+        game_receiving_touchdowns,
+        game_rushing_attempts,
+        game_rushing_yards,
+        game_rushing_touchdowns
+    ) in rows:
+
+        if game_receptions is not None:
+            receptions += game_receptions
+
+        if game_targets is not None:
+            targets += game_targets
+
+        if game_receiving_yards is not None:
+            receiving_yards += game_receiving_yards
+
+        if game_receiving_touchdowns is not None:
+            receiving_touchdowns += game_receiving_touchdowns
+
+        if game_rushing_attempts is not None:
+            rushing_attempts += game_rushing_attempts
+
+        if game_rushing_yards is not None:
+            rushing_yards += game_rushing_yards
+
+        if game_rushing_touchdowns is not None:
+            rushing_touchdowns += game_rushing_touchdowns
+
+    games_played = len(rows)
+
+    return {
+        "games_played": games_played,
+        "receptions": receptions,
+        "targets": targets,
+        "catch_pct": (
+            receptions / targets
+            if targets
+            else 0
+        ),
+        "receiving_yards": receiving_yards,
+        "receiving_yards_per_game": (
+            receiving_yards / games_played
+        ),
+        "yards_per_reception": (
+            receiving_yards / receptions
+            if receptions
+            else 0
+        ),
+        "receiving_touchdowns": receiving_touchdowns,
+        "rushing_attempts": rushing_attempts,
+        "rushing_yards": rushing_yards,
+        "rushing_touchdowns": rushing_touchdowns
+    }
+
+def get_defensive_player_profile(
+    cursor,
+    player_id,
+    season,
+    game_date
+):
+    cursor.execute(
+        """
+        SELECT
+            p.total_tackles,
+            p.solo_tackles,
+            p.sacks,
+            p.tackles_for_loss,
+            p.passes_defended,
+            p.qb_hits,
+            p.defensive_touchdowns,
+            p.defensive_interceptions,
+            p.interception_yards,
+            p.interception_touchdowns,
+            p.fumbles_recovered
+        FROM nfl_player_game_stats p
+        JOIN nfl_games g
+            ON p.game_id = g.game_id
+        WHERE p.player_id = %s
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY g.game_date;
+        """,
+        (player_id, season, game_date)
+    )
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        return None
+
+    total_tackles = 0
+    solo_tackles = 0
+    sacks = 0
+    tackles_for_loss = 0
+    passes_defended = 0
+    qb_hits = 0
+    defensive_touchdowns = 0
+    interceptions = 0
+    interception_yards = 0
+    interception_touchdowns = 0
+    fumbles_recovered = 0
+
+    for (
+        game_total_tackles,
+        game_solo_tackles,
+        game_sacks,
+        game_tackles_for_loss,
+        game_passes_defended,
+        game_qb_hits,
+        game_defensive_touchdowns,
+        game_interceptions,
+        game_interception_yards,
+        game_interception_touchdowns,
+        game_fumbles_recovered
+    ) in rows:
+
+        if game_total_tackles is not None:
+            total_tackles += game_total_tackles
+
+        if game_solo_tackles is not None:
+            solo_tackles += game_solo_tackles
+
+        if game_sacks is not None:
+            sacks += float(game_sacks)
+
+        if game_tackles_for_loss is not None:
+            tackles_for_loss += float(game_tackles_for_loss)
+
+        if game_passes_defended is not None:
+            passes_defended += game_passes_defended
+
+        if game_qb_hits is not None:
+            qb_hits += game_qb_hits
+
+        if game_defensive_touchdowns is not None:
+            defensive_touchdowns += game_defensive_touchdowns
+
+        if game_interceptions is not None:
+            interceptions += game_interceptions
+
+        if game_interception_yards is not None:
+            interception_yards += game_interception_yards
+
+        if game_interception_touchdowns is not None:
+            interception_touchdowns += game_interception_touchdowns
+
+        if game_fumbles_recovered is not None:
+            fumbles_recovered += game_fumbles_recovered
+
+    return {
+        "games_played": len(rows),
+        "total_tackles": total_tackles,
+        "solo_tackles": solo_tackles,
+        "sacks": sacks,
+        "tackles_for_loss": tackles_for_loss,
+        "passes_defended": passes_defended,
+        "qb_hits": qb_hits,
+        "defensive_touchdowns": defensive_touchdowns,
+        "interceptions": interceptions,
+        "interception_yards": interception_yards,
+        "interception_touchdowns": interception_touchdowns,
+        "fumbles_recovered": fumbles_recovered
+    }
+
+def render_offensive_player(
+    starter,
+    qb_profile,
+    qb_player_id,
+    rb_profile,
+    rb_player_id,
+    receiver_profile_map
+):
+    (
+        position_slot,
+        position,
+        player_id,
+        player_name,
+        jersey,
+        status,
+        headshot
+    ) = starter
+
+    st.markdown(f"**{player_name}**")
+
+    if jersey:
+        st.caption(f"#{jersey} · {position}")
+
+    if status and status != "Active":
+        st.write(f"Status: {status}")
+
+    # -------------------------
+    # QUARTERBACK
+    # -------------------------
+
+    if (
+        position == "QB"
+        and player_id == qb_player_id
+        and qb_profile
+    ):
+        st.write(
+            f"{qb_profile['completions']}/"
+            f"{qb_profile['attempts']} "
+            f"({qb_profile['completion_pct'] * 100:.1f}%)"
+        )
+
+        st.write(
+            f"{qb_profile['passing_yards']} Pass YDS · "
+            f"{qb_profile['passing_touchdowns']} TD · "
+            f"{qb_profile['interceptions']} INT"
+        )
+
+        st.write(
+            f"{qb_profile['passing_yards_per_game']:.1f} YDS/G · "
+            f"{qb_profile['yards_per_attempt']:.1f} Y/A"
+        )
+
+        if qb_profile["average_qbr"] is not None:
+            st.write(
+                f"Avg. Game QBR: "
+                f"{qb_profile['average_qbr']:.1f}"
+            )
+
+        if qb_profile["average_passer_rating"] is not None:
+            st.write(
+                f"Avg. Game Passer Rating: "
+                f"{qb_profile['average_passer_rating']:.1f}"
+            )
+
+        if (
+            qb_profile["rushing_attempts"] > 0
+            or qb_profile["rushing_yards"] != 0
+        ):
+            st.write(
+                f"Rushing: "
+                f"{qb_profile['rushing_yards']} YDS · "
+                f"{qb_profile['rushing_touchdowns']} TD"
+            )
+
+    # -------------------------
+    # RUNNING BACK
+    # -------------------------
+
+    elif (
+        position == "RB"
+        and player_id == rb_player_id
+        and rb_profile
+    ):
+        st.write(
+            f"{rb_profile['rushing_attempts']} CAR · "
+            f"{rb_profile['rushing_yards']} YDS · "
+            f"{rb_profile['rushing_touchdowns']} TD"
+        )
+
+        st.write(
+            f"{rb_profile['rushing_yards_per_game']:.1f} YDS/G · "
+            f"{rb_profile['yards_per_carry']:.1f} Y/C"
+        )
+
+        st.write(
+            f"{rb_profile['receptions']} REC · "
+            f"{rb_profile['receiving_targets']} TGT · "
+            f"{rb_profile['receiving_yards']} REC YDS · "
+            f"{rb_profile['receiving_touchdowns']} REC TD"
+        )
+
+        st.write(
+            f"{rb_profile['scrimmage_yards']} Scrimmage YDS · "
+            f"{rb_profile['total_touchdowns']} Total TD"
+        )
+
+    # -------------------------
+    # RECEIVERS
+    # -------------------------
+
+    elif position in ("WR", "TE"):
+        profile = receiver_profile_map.get(player_id)
+
+        if profile:
+            st.write(
+                f"{profile['receptions']} REC · "
+                f"{profile['targets']} TGT · "
+                f"{profile['receiving_yards']} YDS · "
+                f"{profile['receiving_touchdowns']} TD"
+            )
+
+            st.write(
+                f"{profile['catch_pct'] * 100:.1f}% Catch · "
+                f"{profile['yards_per_reception']:.1f} Y/REC · "
+                f"{profile['receiving_yards_per_game']:.1f} YDS/G"
+            )
+
+            if profile["rushing_attempts"] > 0:
+                st.write(
+                    f"Rushing: "
+                    f"{profile['rushing_attempts']} CAR · "
+                    f"{profile['rushing_yards']} YDS · "
+                    f"{profile['rushing_touchdowns']} TD"
+                )
+
+def render_defensive_player(
+    starter,
+    defensive_profile_map
+):
+    (
+        position_slot,
+        position,
+        player_id,
+        player_name,
+        jersey,
+        status,
+        headshot
+    ) = starter
+
+    st.markdown(f"**{player_name}**")
+
+    if jersey:
+        st.caption(f"#{jersey} · {position}")
+
+    if status and status != "Active":
+        st.write(f"Status: {status}")
+
+    profile = defensive_profile_map.get(player_id)
+
+    if not profile:
+        return
+
+    st.write(
+        f"{profile['total_tackles']} TKL · "
+        f"{profile['solo_tackles']} SOLO · "
+        f"{profile['sacks']:.1f} SACK"
+    )
+
+    st.write(
+        f"{profile['tackles_for_loss']:.1f} TFL · "
+        f"{profile['qb_hits']} QB HIT · "
+        f"{profile['passes_defended']} PD"
+    )
+
+    if (
+        profile["interceptions"] > 0
+        or profile["fumbles_recovered"] > 0
+    ):
+        st.write(
+            f"{profile['interceptions']} INT · "
+            f"{profile['interception_yards']} INT YDS · "
+            f"{profile['fumbles_recovered']} FR"
+        )
+
+    if (
+        profile["interception_touchdowns"] > 0
+        or profile["defensive_touchdowns"] > 0
+    ):
+        st.write(
+            f"{profile['interception_touchdowns']} INT TD · "
+            f"{profile['defensive_touchdowns']} DEF TD"
+        )
+
+def get_special_teams_profile(
+    cursor,
+    player_id,
+    season,
+    game_date
+):
+    cursor.execute(
+        """
+        SELECT
+            p.kick_returns,
+            p.kick_return_yards,
+            p.yards_per_kick_return,
+            p.long_kick_return,
+            p.kick_return_touchdowns,
+            p.punt_returns,
+            p.punt_return_yards,
+            p.yards_per_punt_return,
+            p.long_punt_return,
+            p.punt_return_touchdowns,
+            p.field_goals_made_attempted,
+            p.field_goal_pct,
+            p.long_field_goal_made,
+            p.extra_points_made_attempted,
+            p.total_kicking_points,
+            p.punts,
+            p.punt_yards,
+            p.gross_avg_punt_yards,
+            p.touchbacks,
+            p.punts_inside_20,
+            p.long_punt
+        FROM nfl_player_game_stats p
+        JOIN nfl_games g
+            ON p.game_id = g.game_id
+        WHERE p.player_id = %s
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY g.game_date;
+        """,
+        (player_id, season, game_date)
+    )
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        return None
+
+    kick_returns = 0
+    kick_return_yards = 0
+    kick_return_touchdowns = 0
+    long_kick_return = None
+
+    punt_returns = 0
+    punt_return_yards = 0
+    punt_return_touchdowns = 0
+    long_punt_return = None
+
+    field_goals_made = 0
+    field_goal_attempts = 0
+    long_field_goal_made = None
+
+    extra_points_made = 0
+    extra_point_attempts = 0
+    total_kicking_points = 0
+
+    punts = 0
+    punt_yards = 0
+    touchbacks = 0
+    punts_inside_20 = 0
+    long_punt = None
+
+    for (
+        game_kick_returns,
+        game_kick_return_yards,
+        game_yards_per_kick_return,
+        game_long_kick_return,
+        game_kick_return_touchdowns,
+        game_punt_returns,
+        game_punt_return_yards,
+        game_yards_per_punt_return,
+        game_long_punt_return,
+        game_punt_return_touchdowns,
+        game_field_goals,
+        game_field_goal_pct,
+        game_long_field_goal,
+        game_extra_points,
+        game_total_kicking_points,
+        game_punts,
+        game_punt_yards,
+        game_gross_avg_punt_yards,
+        game_touchbacks,
+        game_punts_inside_20,
+        game_long_punt
+    ) in rows:
+
+        if game_kick_returns is not None:
+            kick_returns += game_kick_returns
+
+        if game_kick_return_yards is not None:
+            kick_return_yards += game_kick_return_yards
+
+        if game_kick_return_touchdowns is not None:
+            kick_return_touchdowns += game_kick_return_touchdowns
+
+        if game_long_kick_return is not None:
+            long_kick_return = max(
+                long_kick_return or game_long_kick_return,
+                game_long_kick_return
+            )
+
+        if game_punt_returns is not None:
+            punt_returns += game_punt_returns
+
+        if game_punt_return_yards is not None:
+            punt_return_yards += game_punt_return_yards
+
+        if game_punt_return_touchdowns is not None:
+            punt_return_touchdowns += game_punt_return_touchdowns
+
+        if game_long_punt_return is not None:
+            long_punt_return = max(
+                long_punt_return or game_long_punt_return,
+                game_long_punt_return
+            )
+
+        if game_field_goals:
+            made, attempted = game_field_goals.split("/")
+            field_goals_made += int(made)
+            field_goal_attempts += int(attempted)
+
+        if game_long_field_goal is not None:
+            long_field_goal_made = max(
+                long_field_goal_made or game_long_field_goal,
+                game_long_field_goal
+            )
+
+        if game_extra_points:
+            made, attempted = game_extra_points.split("/")
+            extra_points_made += int(made)
+            extra_point_attempts += int(attempted)
+
+        if game_total_kicking_points is not None:
+            total_kicking_points += game_total_kicking_points
+
+        if game_punts is not None:
+            punts += game_punts
+
+        if game_punt_yards is not None:
+            punt_yards += game_punt_yards
+
+        if game_touchbacks is not None:
+            touchbacks += game_touchbacks
+
+        if game_punts_inside_20 is not None:
+            punts_inside_20 += game_punts_inside_20
+
+        if game_long_punt is not None:
+            long_punt = max(
+                long_punt or game_long_punt,
+                game_long_punt
+            )
+
+    return {
+        "games_played": len(rows),
+
+        "kick_returns": kick_returns,
+        "kick_return_yards": kick_return_yards,
+        "yards_per_kick_return": (
+            kick_return_yards / kick_returns
+            if kick_returns
+            else 0
+        ),
+        "long_kick_return": long_kick_return,
+        "kick_return_touchdowns": kick_return_touchdowns,
+
+        "punt_returns": punt_returns,
+        "punt_return_yards": punt_return_yards,
+        "yards_per_punt_return": (
+            punt_return_yards / punt_returns
+            if punt_returns
+            else 0
+        ),
+        "long_punt_return": long_punt_return,
+        "punt_return_touchdowns": punt_return_touchdowns,
+
+        "field_goals_made": field_goals_made,
+        "field_goal_attempts": field_goal_attempts,
+        "field_goal_pct": (
+            field_goals_made / field_goal_attempts
+            if field_goal_attempts
+            else 0
+        ),
+        "long_field_goal_made": long_field_goal_made,
+
+        "extra_points_made": extra_points_made,
+        "extra_point_attempts": extra_point_attempts,
+        "total_kicking_points": total_kicking_points,
+
+        "punts": punts,
+        "punt_yards": punt_yards,
+        "gross_avg_punt_yards": (
+            punt_yards / punts
+            if punts
+            else 0
+        ),
+        "touchbacks": touchbacks,
+        "punts_inside_20": punts_inside_20,
+        "long_punt": long_punt
+    }
+
+def render_special_teams_player(
+    starter,
+    profile_map
+):
+    (
+        position_slot,
+        position,
+        player_id,
+        player_name,
+        jersey,
+        status,
+        headshot
+    ) = starter
+
+    st.markdown(f"**{player_name}**")
+
+    if jersey:
+        st.caption(f"#{jersey} · {position}")
+
+    if status and status != "Active":
+        st.write(f"Status: {status}")
+
+    profile = profile_map.get(player_id)
+
+    if not profile:
+        return
+
+    # -------------------------
+    # KICKER
+    # -------------------------
+
+    if position_slot == "pk":
+        st.write(
+            f"{profile['field_goals_made']}/"
+            f"{profile['field_goal_attempts']} FG · "
+            f"{profile['field_goal_pct'] * 100:.1f}%"
+        )
+
+        st.write(
+            f"Long: "
+            f"{profile['long_field_goal_made'] if profile['long_field_goal_made'] is not None else 'N/A'} · "
+            f"{profile['extra_points_made']}/"
+            f"{profile['extra_point_attempts']} XP · "
+            f"{profile['total_kicking_points']} PTS"
+        )
+
+    # -------------------------
+    # PUNTER
+    # -------------------------
+
+    elif position_slot == "p":
+        st.write(
+            f"{profile['punts']} PUNTS · "
+            f"{profile['punt_yards']} YDS · "
+            f"{profile['gross_avg_punt_yards']:.1f} AVG"
+        )
+
+        st.write(
+            f"{profile['punts_inside_20']} IN20 · "
+            f"{profile['touchbacks']} TB · "
+            f"Long: "
+            f"{profile['long_punt'] if profile['long_punt'] is not None else 'N/A'}"
+        )
+
+    # -------------------------
+    # KICK RETURNER
+    # -------------------------
+
+    elif position_slot == "kr":
+        st.write(
+            f"{profile['kick_returns']} KR · "
+            f"{profile['kick_return_yards']} YDS · "
+            f"{profile['yards_per_kick_return']:.1f} AVG"
+        )
+
+        st.write(
+            f"Long: "
+            f"{profile['long_kick_return'] if profile['long_kick_return'] is not None else 'N/A'} · "
+            f"{profile['kick_return_touchdowns']} TD"
+        )
+
+    # -------------------------
+    # PUNT RETURNER
+    # -------------------------
+
+    elif position_slot == "pr":
+        st.write(
+            f"{profile['punt_returns']} PR · "
+            f"{profile['punt_return_yards']} YDS · "
+            f"{profile['yards_per_punt_return']:.1f} AVG"
+        )
+
+        st.write(
+            f"Long: "
+            f"{profile['long_punt_return'] if profile['long_punt_return'] is not None else 'N/A'} · "
+            f"{profile['punt_return_touchdowns']} TD"
+        )
+
+def get_depth_players(
+    cursor,
+    team_id,
+    position_group
+):
+    cursor.execute(
+        """
+        SELECT
+            d.position_slot,
+            d.position,
+            d.player_id,
+            d.player_name,
+            p.jersey,
+            p.status,
+            p.headshot,
+            d.depth_order
+        FROM nfl_depth_chart d
+        LEFT JOIN nfl_players p
+            ON d.player_id = p.player_id
+        WHERE d.team_id = %s
+          AND d.position_group = %s
+          AND d.depth_order > 1
+        ORDER BY
+            d.position_slot,
+            d.depth_order;
+        """,
+        (team_id, position_group)
+    )
+
+    return cursor.fetchall()
+
+def build_depth_map(players):
+    return {
+        (player[0], player[7]): player
+        for player in players
+    }
+
+
+def get_matchup_depth_rows(
+    away_players,
+    home_players,
+    display_order
+):
+    away_map = build_depth_map(away_players)
+    home_map = build_depth_map(home_players)
+
+    all_keys = set(away_map) | set(home_map)
+
+    order_index = {
+        slot: index
+        for index, slot in enumerate(display_order)
+    }
+
+    rows = sorted(
+        all_keys,
+        key=lambda key: (
+            order_index.get(key[0], 999),
+            key[0],
+            key[1]
+        )
+    )
+
+    return away_map, home_map, rows
+
+def render_offensive_depth_player(
+    player,
+    profile_map
+):
+    (
+        position_slot,
+        position,
+        player_id,
+        player_name,
+        jersey,
+        status,
+        headshot,
+        depth_order
+    ) = player
+
+    st.markdown(f"**{player_name}**")
+
+    if jersey:
+        st.caption(
+            f"#{jersey} · {position} · Depth {depth_order}"
+        )
+    else:
+        st.caption(
+            f"{position} · Depth {depth_order}"
+        )
+
+    if status and status != "Active":
+        st.write(f"Status: {status}")
+
+    profile = profile_map.get(player_id)
+
+    if not profile:
+        return
+
+    if position == "QB":
+        st.write(
+            f"{profile['completions']}/"
+            f"{profile['attempts']} "
+            f"({profile['completion_pct'] * 100:.1f}%)"
+        )
+
+        st.write(
+            f"{profile['passing_yards']} Pass YDS · "
+            f"{profile['passing_touchdowns']} TD · "
+            f"{profile['interceptions']} INT"
+        )
+
+        st.write(
+            f"{profile['passing_yards_per_game']:.1f} YDS/G · "
+            f"{profile['yards_per_attempt']:.1f} Y/A"
+        )
+
+    elif position == "RB":
+        st.write(
+            f"{profile['rushing_attempts']} CAR · "
+            f"{profile['rushing_yards']} YDS · "
+            f"{profile['rushing_touchdowns']} TD"
+        )
+
+        st.write(
+            f"{profile['rushing_yards_per_game']:.1f} YDS/G · "
+            f"{profile['yards_per_carry']:.1f} Y/C"
+        )
+
+        st.write(
+            f"{profile['receptions']} REC · "
+            f"{profile['receiving_targets']} TGT · "
+            f"{profile['receiving_yards']} REC YDS"
+        )
+
+    elif position in ("WR", "TE"):
+        st.write(
+            f"{profile['receptions']} REC · "
+            f"{profile['targets']} TGT · "
+            f"{profile['receiving_yards']} YDS · "
+            f"{profile['receiving_touchdowns']} TD"
+        )
+
+        st.write(
+            f"{profile['catch_pct'] * 100:.1f}% Catch · "
+            f"{profile['yards_per_reception']:.1f} Y/REC · "
+            f"{profile['receiving_yards_per_game']:.1f} YDS/G"
+        )
+
+OFFENSIVE_DISPLAY_ORDER = [
+    "qb",
+    "rb",
+    "fb",
+    "wr1",
+    "wr2",
+    "wr3",
+    "te",
+    "lt",
+    "lg",
+    "c",
+    "rg",
+    "rt"
+]
+
+DEFENSIVE_DISPLAY_ORDER = [
+    "lde",
+    "le",
+    "dt",
+    "nt",
+    "rde",
+    "re",
+    "wlb",
+    "lilb",
+    "mlb",
+    "rilb",
+    "slb",
+    "olb",
+    "lcb",
+    "cb1",
+    "cb2",
+    "nb",
+    "ss",
+    "fs",
+    "rcb"
+]
+
+SPECIAL_TEAMS_DISPLAY_ORDER = [
+    "pk",
+    "p",
+    "h",
+    "pr",
+    "kr",
+    "ls"
+]
+
 connection = psycopg2.connect(
     host="localhost",
     port=5432,
@@ -594,6 +1790,472 @@ if st.session_state["selected_game"]:
         game_date
     )
 
+    away_offensive_starters = get_offensive_starters(
+        cursor,
+        away_team_id
+    )
+
+    home_offensive_starters = get_offensive_starters(
+        cursor,
+        home_team_id
+    )
+
+    away_qb = next(
+        (
+            starter
+            for starter in away_offensive_starters
+            if starter[0] == "qb"
+        ),
+        None
+    )
+
+    home_qb = next(
+        (
+            starter
+            for starter in home_offensive_starters
+            if starter[0] == "qb"
+        ),
+        None
+    )
+
+    away_qb_profile = None
+
+    if away_qb:
+        away_qb_profile = get_qb_profile(
+            cursor,
+            away_qb[2],
+            2026,
+            game_date
+        )
+
+    home_qb_profile = None
+
+    if home_qb:
+        home_qb_profile = get_qb_profile(
+            cursor,
+            home_qb[2],
+            2026,
+            game_date
+        )
+
+    away_rb = next(
+        (
+            starter
+            for starter in away_offensive_starters
+            if starter[0] == "rb"
+        ),
+        None
+    )
+
+    home_rb = next(
+        (
+            starter
+            for starter in home_offensive_starters
+            if starter[0] == "rb"
+        ),
+        None
+    )
+
+    away_rb_profile = None
+
+    if away_rb:
+        away_rb_profile = get_rb_profile(
+            cursor,
+            away_rb[2],
+            2026,
+            game_date
+        )
+
+    home_rb_profile = None
+
+    if home_rb:
+        home_rb_profile = get_rb_profile(
+            cursor,
+            home_rb[2],
+            2026,
+            game_date
+        )
+
+    away_receivers = [
+        starter
+        for starter in away_offensive_starters
+        if starter[0] in ("wr1", "wr2", "wr3", "te")
+    ]
+
+    home_receivers = [
+        starter
+        for starter in home_offensive_starters
+        if starter[0] in ("wr1", "wr2", "wr3", "te")
+    ]
+
+    away_receiver_profiles = []
+
+    for receiver in away_receivers:
+        profile = get_receiving_profile(
+            cursor,
+            receiver[2],
+            2026,
+            game_date
+        )
+
+        away_receiver_profiles.append(
+            (receiver, profile)
+        )
+
+
+    home_receiver_profiles = []
+
+    for receiver in home_receivers:
+        profile = get_receiving_profile(
+            cursor,
+            receiver[2],
+            2026,
+            game_date
+        )
+
+        home_receiver_profiles.append(
+            (receiver, profile)
+        )
+
+    away_receiver_profile_map = {
+        receiver[2]: profile
+        for receiver, profile in away_receiver_profiles
+    }
+
+    home_receiver_profile_map = {
+        receiver[2]: profile
+        for receiver, profile in home_receiver_profiles
+    }
+
+    away_offensive_map = {
+                starter[0]: starter
+                for starter in away_offensive_starters
+            }
+    
+    home_offensive_map = {
+        starter[0]: starter
+        for starter in home_offensive_starters
+    }
+    
+    matchup_offensive_slots = [
+        slot
+        for slot in OFFENSIVE_DISPLAY_ORDER
+        if (
+            slot in away_offensive_map
+            or slot in home_offensive_map
+        )
+    ]
+
+    away_defensive_starters = get_defensive_starters(
+        cursor,
+        away_team_id
+    )
+
+    home_defensive_starters = get_defensive_starters(
+        cursor,
+        home_team_id
+    )
+
+    away_defensive_map = {
+        starter[0]: starter
+        for starter in away_defensive_starters
+    }
+
+    home_defensive_map = {
+        starter[0]: starter
+        for starter in home_defensive_starters
+    }
+
+    matchup_defensive_slots = [
+        slot
+        for slot in DEFENSIVE_DISPLAY_ORDER
+        if (
+            slot in away_defensive_map
+            or slot in home_defensive_map
+        )
+    ]
+
+    away_defensive_profile_map = {}
+
+    for starter in away_defensive_starters:
+        player_id = starter[2]
+
+        away_defensive_profile_map[player_id] = (
+            get_defensive_player_profile(
+                cursor,
+                player_id,
+                2026,
+                game_date
+            )
+        )
+
+
+    home_defensive_profile_map = {}
+
+    for starter in home_defensive_starters:
+        player_id = starter[2]
+
+        home_defensive_profile_map[player_id] = (
+            get_defensive_player_profile(
+                cursor,
+                player_id,
+                2026,
+                game_date
+            )
+        )
+
+    away_special_teams = get_special_teams_starters(
+        cursor,
+        away_team_id
+    )
+
+    home_special_teams = get_special_teams_starters(
+        cursor,
+        home_team_id
+    )
+
+    away_special_teams_map = {
+        starter[0]: starter
+        for starter in away_special_teams
+    }
+
+    home_special_teams_map = {
+        starter[0]: starter
+        for starter in home_special_teams
+    }
+
+    away_special_teams_profile_map = {}
+
+    for starter in away_special_teams:
+        player_id = starter[2]
+
+        away_special_teams_profile_map[player_id] = (
+            get_special_teams_profile(
+                cursor,
+                player_id,
+                2026,
+                game_date
+            )
+        )
+
+
+    home_special_teams_profile_map = {}
+
+    for starter in home_special_teams:
+        player_id = starter[2]
+
+        home_special_teams_profile_map[player_id] = (
+            get_special_teams_profile(
+                cursor,
+                player_id,
+                2026,
+                game_date
+            )
+        )
+
+    matchup_special_teams_slots = [
+        slot
+        for slot in SPECIAL_TEAMS_DISPLAY_ORDER
+        if (
+            slot in away_special_teams_map
+            or slot in home_special_teams_map
+        )
+    ]
+
+    away_offensive_depth = get_depth_players(
+        cursor,
+        away_team_id,
+        "OFF"
+    )
+
+    home_offensive_depth = get_depth_players(
+        cursor,
+        home_team_id,
+        "OFF"
+    )
+
+    away_defensive_depth = get_depth_players(
+        cursor,
+        away_team_id,
+        "DEF"
+    )
+
+    home_defensive_depth = get_depth_players(
+        cursor,
+        home_team_id,
+        "DEF"
+    )
+
+    away_special_teams_depth = get_depth_players(
+        cursor,
+        away_team_id,
+        "ST"
+    )
+
+    home_special_teams_depth = get_depth_players(
+        cursor,
+        home_team_id,
+        "ST"
+    )
+
+    away_offensive_depth_profile_map = {}
+
+    for player in away_offensive_depth:
+        (
+            position_slot,
+            position,
+            player_id,
+            player_name,
+            jersey,
+            status,
+            headshot,
+            depth_order
+        ) = player
+
+        if position == "QB":
+            profile = get_qb_profile(
+                cursor,
+                player_id,
+                2026,
+                game_date
+            )
+
+        elif position == "RB":
+            profile = get_rb_profile(
+                cursor,
+                player_id,
+                2026,
+                game_date
+            )
+
+        elif position in ("WR", "TE"):
+            profile = get_receiving_profile(
+                cursor,
+                player_id,
+                2026,
+                game_date
+            )
+
+        else:
+            profile = None
+
+        away_offensive_depth_profile_map[player_id] = profile
+
+    home_offensive_depth_profile_map = {}
+
+    for player in home_offensive_depth:
+        (
+            position_slot,
+            position,
+            player_id,
+            player_name,
+            jersey,
+            status,
+            headshot,
+            depth_order
+        ) = player
+
+        if position == "QB":
+            profile = get_qb_profile(
+                cursor,
+                player_id,
+                2026,
+                game_date
+            )
+
+        elif position == "RB":
+            profile = get_rb_profile(
+                cursor,
+                player_id,
+                2026,
+                game_date
+            )
+
+        elif position in ("WR", "TE"):
+            profile = get_receiving_profile(
+                cursor,
+                player_id,
+                2026,
+                game_date
+            )
+
+        else:
+            profile = None
+
+        home_offensive_depth_profile_map[player_id] = profile
+
+    away_defensive_depth_profile_map = {
+        player[2]: get_defensive_player_profile(
+            cursor,
+            player[2],
+            2026,
+            game_date
+        )
+        for player in away_defensive_depth
+    }
+
+    home_defensive_depth_profile_map = {
+        player[2]: get_defensive_player_profile(
+            cursor,
+            player[2],
+            2026,
+            game_date
+        )
+        for player in home_defensive_depth
+    }
+
+    away_special_teams_depth_profile_map = {
+        player[2]: get_special_teams_profile(
+            cursor,
+            player[2],
+            2026,
+            game_date
+        )
+        for player in away_special_teams_depth
+    }
+
+    home_special_teams_depth_profile_map = {
+        player[2]: get_special_teams_profile(
+            cursor,
+            player[2],
+            2026,
+            game_date
+        )
+        for player in home_special_teams_depth
+    }
+
+    (
+        away_offensive_depth_map,
+        home_offensive_depth_map,
+        matchup_offensive_depth_rows
+    ) = get_matchup_depth_rows(
+        away_offensive_depth,
+        home_offensive_depth,
+        OFFENSIVE_DISPLAY_ORDER
+    )
+
+
+    (
+        away_defensive_depth_map,
+        home_defensive_depth_map,
+        matchup_defensive_depth_rows
+    ) = get_matchup_depth_rows(
+        away_defensive_depth,
+        home_defensive_depth,
+        DEFENSIVE_DISPLAY_ORDER
+    )
+
+
+    (
+        away_special_teams_depth_map,
+        home_special_teams_depth_map,
+        matchup_special_teams_depth_rows
+    ) = get_matchup_depth_rows(
+        away_special_teams_depth,
+        home_special_teams_depth,
+        SPECIAL_TEAMS_DISPLAY_ORDER
+    )
+
     away_last_three_turnover_diff = None
 
     if away_boxscore and away_defense:
@@ -753,17 +2415,17 @@ if st.session_state["selected_game"]:
             else:
                 st.write("No 2026 games played.")
 
-            if home_boxscore and home_defense:
+            if away_boxscore and away_defense:
                 st.markdown("#### Recent Form")
 
                 st.write(
                     f"Last 3 Yards/Game: "
-                    f"{home_boxscore['last_three_yards_per_game']:.1f}"
+                    f"{away_boxscore['last_three_yards_per_game']:.1f}"
                 )
 
                 st.write(
                     f"Last 3 Yards Allowed/Game: "
-                    f"{home_defense['last_three_yards_allowed_per_game']:.1f}"
+                    f"{away_defense['last_three_yards_allowed_per_game']:.1f}"
                 )
 
                 st.write(
@@ -834,12 +2496,265 @@ if st.session_state["selected_game"]:
 
                 st.write(
                     f"Last 3 Turnover Differential: "
-                    f"{away_last_three_turnover_diff:+d}"
+                    f"{home_last_three_turnover_diff:+d}"
                 )
 
     with players_tab:
-        st.subheader("Players")
-        st.write("Starters, key players, and player statistics coming soon.")
+        st.subheader("Offensive Starters")
+
+        for position_slot in matchup_offensive_slots:
+
+            away_starter = away_offensive_map.get(position_slot)
+            home_starter = home_offensive_map.get(position_slot)
+
+            st.markdown(f"### {position_slot.upper()}")
+
+            away_player_col, home_player_col = st.columns(2)
+
+            with away_player_col:
+                with st.container(border=True):
+                    st.markdown(f"**{away_team}**")
+
+                    if away_starter:
+                        render_offensive_player(
+                            away_starter,
+                            away_qb_profile,
+                            away_qb[2] if away_qb else None,
+                            away_rb_profile,
+                            away_rb[2] if away_rb else None,
+                            away_receiver_profile_map
+                        )
+                    else:
+                        st.markdown("**N/A**")
+                        st.caption("No listed starter")
+
+            with home_player_col:
+                with st.container(border=True):
+                    st.markdown(f"**{home_team}**")
+
+                    if home_starter:
+                        render_offensive_player(
+                            home_starter,
+                            home_qb_profile,
+                            home_qb[2] if home_qb else None,
+                            home_rb_profile,
+                            home_rb[2] if home_rb else None,
+                            home_receiver_profile_map
+                        )
+                    else:
+                        st.markdown("**N/A**")
+                        st.caption("No listed starter")
+
+        with st.expander("Offensive Depth / Rotation"):
+
+            for position_slot, depth_order in matchup_offensive_depth_rows:
+
+                away_player = away_offensive_depth_map.get(
+                    (position_slot, depth_order)
+                )
+
+                home_player = home_offensive_depth_map.get(
+                    (position_slot, depth_order)
+                )
+
+                st.markdown(
+                    f"### {position_slot.upper()} · "
+                    f"Depth {depth_order}"
+                )
+
+                away_depth_col, home_depth_col = st.columns(2)
+
+                with away_depth_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{away_team}**")
+
+                        if away_player:
+                            render_offensive_depth_player(
+                                away_player,
+                                away_offensive_depth_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed player")
+
+                with home_depth_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{home_team}**")
+
+                        if home_player:
+                            render_offensive_depth_player(
+                                home_player,
+                                home_offensive_depth_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed player")
+
+        st.divider()
+        st.subheader("Defensive Starters")
+
+        for position_slot in matchup_defensive_slots:
+
+            away_starter = away_defensive_map.get(position_slot)
+            home_starter = home_defensive_map.get(position_slot)
+
+            st.markdown(f"### {position_slot.upper()}")
+
+            away_defense_col, home_defense_col = st.columns(2)
+
+            with away_defense_col:
+                with st.container(border=True):
+                    st.markdown(f"**{away_team}**")
+
+                    if away_starter:
+                        render_defensive_player(
+                            away_starter,
+                            away_defensive_profile_map
+                        )
+                    else:
+                        st.markdown("**N/A**")
+                        st.caption("No listed starter")
+
+            with home_defense_col:
+                with st.container(border=True):
+                    st.markdown(f"**{home_team}**")
+
+                    if home_starter:
+                        render_defensive_player(
+                            home_starter,
+                            home_defensive_profile_map
+                        )
+                    else:
+                        st.markdown("**N/A**")
+                        st.caption("No listed starter")
+
+        with st.expander("Defensive Depth / Rotation"):
+
+            for position_slot, depth_order in matchup_defensive_depth_rows:
+
+                away_player = away_defensive_depth_map.get(
+                    (position_slot, depth_order)
+                )
+
+                home_player = home_defensive_depth_map.get(
+                    (position_slot, depth_order)
+                )
+
+                st.markdown(
+                    f"### {position_slot.upper()} · "
+                    f"Depth {depth_order}"
+                )
+
+                away_depth_col, home_depth_col = st.columns(2)
+
+                with away_depth_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{away_team}**")
+
+                        if away_player:
+                            render_defensive_player(
+                                away_player[:7],
+                                away_defensive_depth_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed player")
+
+                with home_depth_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{home_team}**")
+
+                        if home_player:
+                            render_defensive_player(
+                                home_player[:7],
+                                home_defensive_depth_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed player")
+
+        st.divider()
+        st.subheader("Special Teams")
+
+        for position_slot in matchup_special_teams_slots:
+
+            away_starter = away_special_teams_map.get(position_slot)
+            home_starter = home_special_teams_map.get(position_slot)
+
+            st.markdown(f"### {position_slot.upper()}")
+
+            away_special_col, home_special_col = st.columns(2)
+
+            with away_special_col:
+                with st.container(border=True):
+                    st.markdown(f"**{away_team}**")
+
+                    if away_starter:
+                        render_special_teams_player(
+                            away_starter,
+                            away_special_teams_profile_map
+                        )
+                    else:
+                        st.markdown("**N/A**")
+                        st.caption("No listed starter")
+
+            with home_special_col:
+                with st.container(border=True):
+                    st.markdown(f"**{home_team}**")
+
+                    if home_starter:
+                        render_special_teams_player(
+                            home_starter,
+                            home_special_teams_profile_map
+                        )
+                    else:
+                        st.markdown("**N/A**")
+                        st.caption("No listed starter")
+
+        with st.expander("Special Teams Depth / Rotation"):
+
+            for position_slot, depth_order in matchup_special_teams_depth_rows:
+
+                away_player = away_special_teams_depth_map.get(
+                    (position_slot, depth_order)
+                )
+
+                home_player = home_special_teams_depth_map.get(
+                    (position_slot, depth_order)
+                )
+
+                st.markdown(
+                    f"### {position_slot.upper()} · "
+                    f"Depth {depth_order}"
+                )
+
+                away_depth_col, home_depth_col = st.columns(2)
+
+                with away_depth_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{away_team}**")
+
+                        if away_player:
+                            render_special_teams_player(
+                                away_player[:7],
+                                away_special_teams_depth_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed player")
+
+                with home_depth_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{home_team}**")
+
+                        if home_player:
+                            render_special_teams_player(
+                                home_player[:7],
+                                home_special_teams_depth_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed player")
 
     with matchup_tab:
         st.subheader("Matchup")

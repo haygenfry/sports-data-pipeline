@@ -9,7 +9,7 @@ schedule = []
 for week in range(1, 19):
 
     params = {
-        "dates": "2026",
+        "dates": "2025",
         "seasontype": 2,
         "week": week
     }
@@ -23,6 +23,7 @@ for week in range(1, 19):
         competition = event["competitions"][0]
         competitors = competition["competitors"]
         game_id = event["id"]
+
         game_date = event["date"]
         venue = competition["venue"]["fullName"]
 
