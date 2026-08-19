@@ -2004,6 +2004,655 @@ def render_matchup_table(
         with read_col:
             st.write(matchup_read)
 
+def get_game_team_stats(
+    cursor,
+    game_id,
+    team_id
+):
+    cursor.execute(
+        """
+        SELECT
+            total_yards,
+            passing_yards,
+            rushing_yards,
+            yards_per_play,
+            first_downs,
+            turnovers,
+            third_down_eff,
+            red_zone_eff,
+            possession_time
+        FROM nfl_team_game_stats
+        WHERE game_id = %s
+          AND team_id = %s;
+        """,
+        (game_id, team_id)
+    )
+
+    row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "total_yards": row[0],
+        "passing_yards": row[1],
+        "rushing_yards": row[2],
+        "yards_per_play": float(row[3]) if row[3] is not None else None,
+        "first_downs": row[4],
+        "turnovers": row[5],
+        "third_down_eff": row[6],
+        "red_zone_eff": row[7],
+        "possession_time": row[8]
+    }
+
+def get_game_player_stats(
+    cursor,
+    game_id,
+    team_id
+):
+    cursor.execute(
+        """
+        SELECT
+            player_id,
+            player_name,
+            jersey,
+
+            completions_attempts,
+            passing_yards,
+            yards_per_pass_attempt,
+            passing_touchdowns,
+            passing_interceptions,
+            sacks_sack_yards_lost,
+            qbr,
+            passer_rating,
+
+            rushing_attempts,
+            rushing_yards,
+            yards_per_rush_attempt,
+            rushing_touchdowns,
+            long_rushing,
+
+            receptions,
+            receiving_targets,
+            receiving_yards,
+            yards_per_reception,
+            receiving_touchdowns,
+            long_reception,
+
+            fumbles,
+            fumbles_lost,
+
+            total_tackles,
+            solo_tackles,
+            sacks,
+            tackles_for_loss,
+            passes_defended,
+            qb_hits,
+            defensive_touchdowns,
+            defensive_interceptions,
+            interception_yards,
+            interception_touchdowns,
+            fumbles_recovered,
+
+            kick_returns,
+            kick_return_yards,
+            yards_per_kick_return,
+            long_kick_return,
+            kick_return_touchdowns,
+
+            punt_returns,
+            punt_return_yards,
+            yards_per_punt_return,
+            long_punt_return,
+            punt_return_touchdowns,
+
+            field_goals_made_attempted,
+            field_goal_pct,
+            long_field_goal_made,
+            extra_points_made_attempted,
+            total_kicking_points,
+
+            punts,
+            punt_yards,
+            gross_avg_punt_yards,
+            touchbacks,
+            punts_inside_20,
+            long_punt
+
+        FROM nfl_player_game_stats
+
+        WHERE game_id = %s
+          AND team_id = %s
+
+        ORDER BY player_name;
+        """,
+        (game_id, team_id)
+    )
+
+    rows = cursor.fetchall()
+
+    columns = [
+        desc[0]
+        for desc in cursor.description
+    ]
+
+    return [
+        dict(zip(columns, row))
+        for row in rows
+    ]
+
+def render_passing_box_score(
+    team_name,
+    player_stats
+):
+    passers = [
+        player
+        for player in player_stats
+        if player["completions_attempts"] is not None
+    ]
+
+    if not passers:
+        return
+
+    st.markdown(f"#### {team_name} Passing")
+
+    header_cols = st.columns([2, 1, 1, 1, 1, 1, 1, 1])
+
+    headers = [
+        "Player",
+        "C/ATT",
+        "YDS",
+        "AVG",
+        "TD",
+        "INT",
+        "SACKS",
+        "RTG"
+    ]
+
+    for col, header in zip(header_cols, headers):
+        col.markdown(f"**{header}**")
+
+    for player in passers:
+
+        cols = st.columns([2, 1, 1, 1, 1, 1, 1, 1])
+
+        values = [
+            player["player_name"],
+            player["completions_attempts"],
+            player["passing_yards"],
+            player["yards_per_pass_attempt"],
+            player["passing_touchdowns"],
+            player["passing_interceptions"],
+            player["sacks_sack_yards_lost"],
+            player["passer_rating"]
+        ]
+
+        for index, (col, value) in enumerate(zip(cols, values)):
+
+            if value is None:
+                display_value = "—"
+
+            elif index in (3, 7):
+                display_value = f"{float(value):.1f}"
+
+            else:
+                display_value = str(value)
+
+            col.write(display_value)
+
+def render_rushing_box_score(
+    team_name,
+    player_stats
+):
+    rushers = [
+        player
+        for player in player_stats
+        if player["rushing_attempts"] is not None
+        and player["rushing_attempts"] > 0
+    ]
+
+    if not rushers:
+        return
+
+    rushers.sort(
+        key=lambda player: player["rushing_attempts"],
+        reverse=True
+    )
+
+    st.markdown(f"#### {team_name} Rushing")
+
+    header_cols = st.columns([2, 1, 1, 1, 1, 1])
+
+    headers = [
+        "Player",
+        "CAR",
+        "YDS",
+        "AVG",
+        "TD",
+        "LONG"
+    ]
+
+    for col, header in zip(header_cols, headers):
+        col.markdown(f"**{header}**")
+
+    for player in rushers:
+
+        cols = st.columns([2, 1, 1, 1, 1, 1])
+
+        values = [
+            player["player_name"],
+            player["rushing_attempts"],
+            player["rushing_yards"],
+            player["yards_per_rush_attempt"],
+            player["rushing_touchdowns"],
+            player["long_rushing"]
+        ]
+
+        for index, (col, value) in enumerate(zip(cols, values)):
+
+            if value is None:
+                display_value = "—"
+
+            elif index == 3:
+                display_value = f"{float(value):.1f}"
+
+            else:
+                display_value = str(value)
+
+            col.write(display_value)
+
+def render_receiving_box_score(
+    team_name,
+    player_stats
+):
+    receivers = [
+        player
+        for player in player_stats
+        if (
+            player["receiving_targets"] is not None
+            and player["receiving_targets"] > 0
+        )
+        or (
+            player["receptions"] is not None
+            and player["receptions"] > 0
+        )
+    ]
+
+    if not receivers:
+        return
+
+    receivers.sort(
+        key=lambda player: (
+            player["receiving_yards"] or 0,
+            player["receptions"] or 0
+        ),
+        reverse=True
+    )
+
+    st.markdown(f"#### {team_name} Receiving")
+
+    header_cols = st.columns(
+        [2, 1, 1, 1, 1, 1, 1]
+    )
+
+    headers = [
+        "Player",
+        "REC",
+        "TGT",
+        "YDS",
+        "AVG",
+        "TD",
+        "LONG"
+    ]
+
+    for col, header in zip(header_cols, headers):
+        col.markdown(f"**{header}**")
+
+    for player in receivers:
+
+        cols = st.columns(
+            [2, 1, 1, 1, 1, 1, 1]
+        )
+
+        values = [
+            player["player_name"],
+            player["receptions"],
+            player["receiving_targets"],
+            player["receiving_yards"],
+            player["yards_per_reception"],
+            player["receiving_touchdowns"],
+            player["long_reception"]
+        ]
+
+        for index, (col, value) in enumerate(
+            zip(cols, values)
+        ):
+
+            if value is None:
+                display_value = "—"
+
+            elif index == 4:
+                display_value = f"{float(value):.1f}"
+
+            else:
+                display_value = str(value)
+
+            col.write(display_value)
+
+def render_defensive_box_score(
+    team_name,
+    player_stats
+):
+    defenders = [
+        player
+        for player in player_stats
+        if any([
+            (player["total_tackles"] or 0) > 0,
+            (player["solo_tackles"] or 0) > 0,
+            float(player["sacks"] or 0) > 0,
+            float(player["tackles_for_loss"] or 0) > 0,
+            (player["passes_defended"] or 0) > 0,
+            (player["qb_hits"] or 0) > 0,
+            (player["defensive_interceptions"] or 0) > 0,
+            (player["fumbles_recovered"] or 0) > 0,
+            (player["defensive_touchdowns"] or 0) > 0
+        ])
+    ]
+
+    if not defenders:
+        return
+
+    defenders.sort(
+        key=lambda player: (
+            player["total_tackles"] or 0,
+            float(player["sacks"] or 0),
+            player["defensive_interceptions"] or 0
+        ),
+        reverse=True
+    )
+
+    st.markdown(f"#### {team_name} Defense")
+
+    header_cols = st.columns(
+        [2, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    )
+
+    headers = [
+        "Player",
+        "TOT",
+        "SOLO",
+        "SACK",
+        "TFL",
+        "PD",
+        "QB HIT",
+        "INT",
+        "FR",
+        "TD"
+    ]
+
+    for col, header in zip(header_cols, headers):
+        col.markdown(f"**{header}**")
+
+    for player in defenders:
+
+        cols = st.columns(
+            [2, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        )
+
+        values = [
+            player["player_name"],
+            player["total_tackles"],
+            player["solo_tackles"],
+            player["sacks"],
+            player["tackles_for_loss"],
+            player["passes_defended"],
+            player["qb_hits"],
+            player["defensive_interceptions"],
+            player["fumbles_recovered"],
+            player["defensive_touchdowns"]
+        ]
+
+        for index, (col, value) in enumerate(
+            zip(cols, values)
+        ):
+            if value is None:
+                display_value = "0"
+
+            elif index in (3, 4):
+                number = float(value)
+
+                if number.is_integer():
+                    display_value = str(int(number))
+                else:
+                    display_value = f"{number:.1f}"
+
+            else:
+                display_value = str(value)
+
+            col.write(display_value)
+
+def render_kicking_box_score(
+    team_name,
+    player_stats
+):
+    kickers = [
+        player
+        for player in player_stats
+        if player["field_goals_made_attempted"] is not None
+        or player["extra_points_made_attempted"] is not None
+    ]
+
+    if not kickers:
+        return
+
+    st.markdown(f"#### {team_name} Kicking")
+
+    header_cols = st.columns([2, 1, 1, 1, 1, 1])
+
+    headers = [
+        "Player",
+        "FG",
+        "FG%",
+        "LONG",
+        "XP",
+        "PTS"
+    ]
+
+    for col, header in zip(header_cols, headers):
+        col.markdown(f"**{header}**")
+
+    for player in kickers:
+
+        cols = st.columns([2, 1, 1, 1, 1, 1])
+
+        fg_pct = player["field_goal_pct"]
+
+        values = [
+            player["player_name"],
+            player["field_goals_made_attempted"],
+            (
+                f"{float(fg_pct):.1f}%"
+                if fg_pct is not None
+                else "—"
+            ),
+            player["long_field_goal_made"],
+            player["extra_points_made_attempted"],
+            player["total_kicking_points"]
+        ]
+
+        for col, value in zip(cols, values):
+            col.write("—" if value is None else str(value))
+
+def render_punting_box_score(
+    team_name,
+    player_stats
+):
+    punters = [
+        player
+        for player in player_stats
+        if player["punts"] is not None
+        and player["punts"] > 0
+    ]
+
+    if not punters:
+        return
+
+    st.markdown(f"#### {team_name} Punting")
+
+    header_cols = st.columns([2, 1, 1, 1, 1, 1, 1])
+
+    headers = [
+        "Player",
+        "PUNTS",
+        "YDS",
+        "AVG",
+        "TB",
+        "IN20",
+        "LONG"
+    ]
+
+    for col, header in zip(header_cols, headers):
+        col.markdown(f"**{header}**")
+
+    for player in punters:
+
+        cols = st.columns([2, 1, 1, 1, 1, 1, 1])
+
+        avg = player["gross_avg_punt_yards"]
+
+        values = [
+            player["player_name"],
+            player["punts"],
+            player["punt_yards"],
+            f"{float(avg):.1f}" if avg is not None else "—",
+            player["touchbacks"],
+            player["punts_inside_20"],
+            player["long_punt"]
+        ]
+
+        for col, value in zip(cols, values):
+            col.write("—" if value is None else str(value))
+
+def render_return_box_score(
+    team_name,
+    player_stats
+):
+    returners = [
+        player
+        for player in player_stats
+        if (
+            (player["kick_returns"] or 0) > 0
+            or (player["punt_returns"] or 0) > 0
+        )
+    ]
+
+    if not returners:
+        return
+
+    st.markdown(f"#### {team_name} Returns")
+
+    header_cols = st.columns(
+        [2, 1, 1, 1, 1, 1, 1, 1, 1]
+    )
+
+    headers = [
+        "Player",
+        "KR",
+        "KR YDS",
+        "KR AVG",
+        "KR LONG",
+        "PR",
+        "PR YDS",
+        "PR AVG",
+        "TD"
+    ]
+
+    for col, header in zip(header_cols, headers):
+        col.markdown(f"**{header}**")
+
+    for player in returners:
+
+        cols = st.columns(
+            [2, 1, 1, 1, 1, 1, 1, 1, 1]
+        )
+
+        kr_avg = player["yards_per_kick_return"]
+        pr_avg = player["yards_per_punt_return"]
+
+        values = [
+            player["player_name"],
+            player["kick_returns"] or 0,
+            player["kick_return_yards"] or 0,
+            (
+                f"{float(kr_avg):.1f}"
+                if kr_avg is not None
+                else "—"
+            ),
+            player["long_kick_return"] or 0,
+            player["punt_returns"] or 0,
+            player["punt_return_yards"] or 0,
+            (
+                f"{float(pr_avg):.1f}"
+                if pr_avg is not None
+                else "—"
+            ),
+            (player["kick_return_touchdowns"] or 0)
+            + (player["punt_return_touchdowns"] or 0)
+        ]
+
+        for col, value in zip(cols, values):
+            col.write(str(value))
+
+def render_fumbles_box_score(
+    team_name,
+    player_stats
+):
+    fumblers = [
+        player
+        for player in player_stats
+        if (
+            (player["fumbles"] or 0) > 0
+            or (player["fumbles_lost"] or 0) > 0
+        )
+    ]
+
+    if not fumblers:
+        return
+
+    fumblers.sort(
+        key=lambda player: (
+            player["fumbles"] or 0,
+            player["fumbles_lost"] or 0
+        ),
+        reverse=True
+    )
+
+    st.markdown(f"#### {team_name} Fumbles")
+
+    header_cols = st.columns([2, 1, 1])
+
+    headers = [
+        "Player",
+        "FUM",
+        "LOST"
+    ]
+
+    for col, header in zip(header_cols, headers):
+        col.markdown(f"**{header}**")
+
+    for player in fumblers:
+
+        cols = st.columns([2, 1, 1])
+
+        values = [
+            player["player_name"],
+            player["fumbles"] or 0,
+            player["fumbles_lost"] or 0
+        ]
+
+        for col, value in zip(cols, values):
+            col.write(str(value))
+
 OFFENSIVE_DISPLAY_ORDER = [
     "qb",
     "rb",
@@ -2260,6 +2909,30 @@ if st.session_state["selected_game"]:
     home_matchup_edges = get_matchup_edges(
         home_offense_vs_away_defense,
         league_matchup_baselines
+    )
+
+    away_game_team_stats = get_game_team_stats(
+        cursor,
+        game_id,
+        away_team_id
+    )
+
+    home_game_team_stats = get_game_team_stats(
+        cursor,
+        game_id,
+        home_team_id
+    )
+
+    away_game_player_stats = get_game_player_stats(
+        cursor,
+        game_id,
+        away_team_id
+    )
+
+    home_game_player_stats = get_game_player_stats(
+        cursor,
+        game_id,
+        home_team_id
     )
 
     away_offensive_starters = get_offensive_starters(
@@ -2815,6 +3488,7 @@ if st.session_state["selected_game"]:
         team_stats_tab,
         players_tab,
         matchup_tab,
+        game_stats_tab,
         injuries_tab,
         weather_tab,
         betting_tab,
@@ -2824,6 +3498,7 @@ if st.session_state["selected_game"]:
         "Team Stats",
         "Players",
         "Matchup",
+        "Game Stats",
         "Injuries",
         "Weather",
         "Betting",
@@ -3245,6 +3920,215 @@ if st.session_state["selected_game"]:
             away_team,
             home_offense_vs_away_defense,
             home_matchup_edges
+        )
+
+    with game_stats_tab:
+        st.subheader("Game Stats")
+
+        if not away_game_team_stats or not home_game_team_stats:
+            st.write("Game stats available after completion.")
+
+        else:
+            st.markdown(
+                f"### {away_team} vs {home_team}"
+            )
+
+            metric_col, away_col, home_col = st.columns(
+                [1.5, 1, 1]
+            )
+
+            with metric_col:
+                st.markdown("**Metric**")
+
+            with away_col:
+                st.markdown(f"**{away_team}**")
+
+            with home_col:
+                st.markdown(f"**{home_team}**")
+
+            st.divider()
+
+            team_stat_rows = [
+                (
+                    "Total Yards",
+                    away_game_team_stats["total_yards"],
+                    home_game_team_stats["total_yards"]
+                ),
+                (
+                    "Passing Yards",
+                    away_game_team_stats["passing_yards"],
+                    home_game_team_stats["passing_yards"]
+                ),
+                (
+                    "Rushing Yards",
+                    away_game_team_stats["rushing_yards"],
+                    home_game_team_stats["rushing_yards"]
+                ),
+                (
+                    "Yards / Play",
+                    away_game_team_stats["yards_per_play"],
+                    home_game_team_stats["yards_per_play"]
+                ),
+                (
+                    "First Downs",
+                    away_game_team_stats["first_downs"],
+                    home_game_team_stats["first_downs"]
+                ),
+                (
+                    "Turnovers",
+                    away_game_team_stats["turnovers"],
+                    home_game_team_stats["turnovers"]
+                ),
+                (
+                    "3rd Down",
+                    away_game_team_stats["third_down_eff"],
+                    home_game_team_stats["third_down_eff"]
+                ),
+                (
+                    "Red Zone",
+                    away_game_team_stats["red_zone_eff"],
+                    home_game_team_stats["red_zone_eff"]
+                ),
+                (
+                    "Possession",
+                    away_game_team_stats["possession_time"],
+                    home_game_team_stats["possession_time"]
+                )
+            ]
+
+            for metric, away_value, home_value in team_stat_rows:
+
+                metric_col, away_col, home_col = st.columns(
+                    [1.5, 1, 1]
+                )
+
+                with metric_col:
+                    st.write(metric)
+
+                with away_col:
+                    if metric == "Yards / Play":
+                        st.write(
+                            f"{away_value:.2f}"
+                            if away_value is not None
+                            else "N/A"
+                        )
+                    else:
+                        st.write(
+                            away_value
+                            if away_value is not None
+                            else "N/A"
+                        )
+
+                with home_col:
+                    if metric == "Yards / Play":
+                        st.write(
+                            f"{home_value:.2f}"
+                            if home_value is not None
+                            else "N/A"
+                        )
+                    else:
+                        st.write(
+                            home_value
+                            if home_value is not None
+                            else "N/A"
+                        )
+
+        st.divider()
+        st.subheader("Player Box Score")
+
+        render_passing_box_score(
+            away_team,
+            away_game_player_stats
+        )
+
+        render_passing_box_score(
+            home_team,
+            home_game_player_stats
+        )
+
+        st.divider()
+
+        render_rushing_box_score(
+            away_team,
+            away_game_player_stats
+        )
+
+        render_rushing_box_score(
+            home_team,
+            home_game_player_stats
+        )
+
+        st.divider()
+
+        render_receiving_box_score(
+            away_team,
+            away_game_player_stats
+        )
+
+        render_receiving_box_score(
+            home_team,
+            home_game_player_stats
+        )
+
+        st.divider()
+
+        render_fumbles_box_score(
+            away_team,
+            away_game_player_stats
+        )
+
+        render_fumbles_box_score(
+            home_team,
+            home_game_player_stats
+        )
+
+        st.divider()
+
+        render_defensive_box_score(
+            away_team,
+            away_game_player_stats
+        )
+
+        render_defensive_box_score(
+            home_team,
+            home_game_player_stats
+        )
+
+        st.divider()
+        st.subheader("Special Teams")
+
+        render_kicking_box_score(
+            away_team,
+            away_game_player_stats
+        )
+
+        render_kicking_box_score(
+            home_team,
+            home_game_player_stats
+        )
+
+        st.divider()
+
+        render_punting_box_score(
+            away_team,
+            away_game_player_stats
+        )
+
+        render_punting_box_score(
+            home_team,
+            home_game_player_stats
+        )
+
+        st.divider()
+
+        render_return_box_score(
+            away_team,
+            away_game_player_stats
+        )
+
+        render_return_box_score(
+            home_team,
+            home_game_player_stats
         )
 
     with injuries_tab:
