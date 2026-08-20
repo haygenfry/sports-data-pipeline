@@ -2653,6 +2653,226 @@ def render_fumbles_box_score(
         for col, value in zip(cols, values):
             col.write(str(value))
 
+def get_game_injuries(
+    cursor,
+    game_id,
+    team_id
+):
+    cursor.execute(
+        """
+        SELECT snapshot_id
+        FROM nfl_injury_snapshots
+        WHERE game_id = %s
+          AND team_id = %s
+        ORDER BY captured_at DESC
+        LIMIT 1;
+        """,
+        (game_id, team_id)
+    )
+
+    snapshot_row = cursor.fetchone()
+
+    if not snapshot_row:
+        return []
+
+    snapshot_id = snapshot_row[0]
+
+    cursor.execute(
+        """
+        SELECT
+            player_id,
+            player_name,
+            jersey,
+            position,
+            headshot,
+            status,
+            injury_type,
+            injury_location,
+            injury_detail,
+            injury_side,
+            injury_date,
+            return_date
+        FROM nfl_injuries
+        WHERE snapshot_id = %s
+        ORDER BY
+            CASE
+                WHEN status = 'Out' THEN 1
+                WHEN status = 'Injured Reserve' THEN 2
+                WHEN status = 'Doubtful' THEN 3
+                WHEN status = 'Questionable' THEN 4
+                ELSE 5
+            END,
+            player_name;
+        """,
+        (snapshot_id,)
+    )
+
+    rows = cursor.fetchall()
+
+    return [
+        {
+            "player_id": row[0],
+            "player_name": row[1],
+            "jersey": row[2],
+            "position": row[3],
+            "headshot": row[4],
+            "status": row[5],
+            "injury_type": row[6],
+            "injury_location": row[7],
+            "injury_detail": row[8],
+            "injury_side": row[9],
+            "injury_date": row[10],
+            "return_date": row[11]
+        }
+        for row in rows
+    ]
+
+def get_injury_changes(
+    cursor,
+    game_id,
+    team_id
+):
+    cursor.execute(
+        """
+        SELECT
+            snapshot_id,
+            captured_at
+        FROM nfl_injury_snapshots
+        WHERE game_id = %s
+          AND team_id = %s
+        ORDER BY captured_at DESC
+        LIMIT 2;
+        """,
+        (game_id, team_id)
+    )
+
+    snapshots = cursor.fetchall()
+
+    if len(snapshots) < 2:
+        return []
+
+    latest_snapshot_id = snapshots[0][0]
+    previous_snapshot_id = snapshots[1][0]
+
+    cursor.execute(
+        """
+        SELECT
+            player_id,
+            player_name,
+            status,
+            injury_type
+        FROM nfl_injuries
+        WHERE snapshot_id = %s;
+        """,
+        (latest_snapshot_id,)
+    )
+
+    latest_rows = cursor.fetchall()
+
+    cursor.execute(
+        """
+        SELECT
+            player_id,
+            player_name,
+            status,
+            injury_type
+        FROM nfl_injuries
+        WHERE snapshot_id = %s;
+        """,
+        (previous_snapshot_id,)
+    )
+
+    previous_rows = cursor.fetchall()
+
+    latest_map = {
+        row[0]: {
+            "player_name": row[1],
+            "status": row[2],
+            "injury_type": row[3]
+        }
+        for row in latest_rows
+    }
+
+    previous_map = {
+        row[0]: {
+            "player_name": row[1],
+            "status": row[2],
+            "injury_type": row[3]
+        }
+        for row in previous_rows
+    }
+
+    changes = []
+
+    all_player_ids = (
+        set(latest_map.keys())
+        | set(previous_map.keys())
+    )
+
+    for player_id in all_player_ids:
+
+        latest = latest_map.get(player_id)
+        previous = previous_map.get(player_id)
+
+        if previous and not latest:
+            changes.append(
+                {
+                    "player_id": player_id,
+                    "player_name": previous["player_name"],
+                    "change_type": "removed",
+                    "old_status": previous["status"],
+                    "new_status": None,
+                    "injury_type": previous["injury_type"]
+                }
+            )
+
+        elif latest and not previous:
+            changes.append(
+                {
+                    "player_id": player_id,
+                    "player_name": latest["player_name"],
+                    "change_type": "added",
+                    "old_status": None,
+                    "new_status": latest["status"],
+                    "injury_type": latest["injury_type"]
+                }
+            )
+
+        elif latest["status"] != previous["status"]:
+            changes.append(
+                {
+                    "player_id": player_id,
+                    "player_name": latest["player_name"],
+                    "change_type": "status_change",
+                    "old_status": previous["status"],
+                    "new_status": latest["status"],
+                    "injury_type": latest["injury_type"]
+                }
+            )
+
+    return changes
+
+def get_latest_injury_snapshot_time(
+    cursor,
+    game_id,
+    team_id
+):
+    cursor.execute(
+        """
+        SELECT captured_at
+        FROM nfl_injury_snapshots
+        WHERE game_id = %s
+          AND team_id = %s
+        ORDER BY captured_at DESC
+        LIMIT 1;
+        """,
+        (game_id, team_id)
+    )
+
+    row = cursor.fetchone()
+
+    return row[0] if row else None
+
 OFFENSIVE_DISPLAY_ORDER = [
     "qb",
     "rb",
@@ -2930,6 +3150,42 @@ if st.session_state["selected_game"]:
     )
 
     home_game_player_stats = get_game_player_stats(
+        cursor,
+        game_id,
+        home_team_id
+    )
+
+    away_injuries = get_game_injuries(
+        cursor,
+        game_id,
+        away_team_id
+    )
+
+    home_injuries = get_game_injuries(
+        cursor,
+        game_id,
+        home_team_id
+    )
+
+    away_injury_changes = get_injury_changes(
+        cursor,
+        game_id,
+        away_team_id
+    )
+
+    home_injury_changes = get_injury_changes(
+        cursor,
+        game_id,
+        home_team_id
+    )
+
+    away_injury_updated = get_latest_injury_snapshot_time(
+        cursor,
+        game_id,
+        away_team_id
+    )
+
+    home_injury_updated = get_latest_injury_snapshot_time(
         cursor,
         game_id,
         home_team_id
@@ -4133,7 +4389,193 @@ if st.session_state["selected_game"]:
 
     with injuries_tab:
         st.subheader("Injuries")
-        st.write("Injury reports coming soon.")
+
+        away_injury_col, home_injury_col = st.columns(2)
+
+        with away_injury_col:
+            st.markdown(f"### {away_team}")
+
+            if not away_injuries:
+                st.write("No injuries listed.")
+
+            else:
+                away_injury_table = []
+
+                for injury in away_injuries:
+                    away_injury_table.append(
+                        {
+                            "Player": injury["player_name"],
+                            "Pos": injury["position"] or "—",
+                            "Status": injury["status"] or "—",
+                            "Injury": (
+                                injury["injury_type"]
+                                or "Undisclosed"
+                            ),
+                            "Return": (
+                                str(injury["return_date"])
+                                if injury["return_date"]
+                                else "—"
+                            )
+                        }
+                    )
+
+                st.dataframe(
+                    away_injury_table,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Player": st.column_config.TextColumn(
+                            "Player",
+                            width="medium"
+                        ),
+                        "Pos": st.column_config.TextColumn(
+                            "Pos",
+                            width="small"
+                        ),
+                        "Status": st.column_config.TextColumn(
+                            "Status",
+                            width="medium"
+                        ),
+                        "Injury": st.column_config.TextColumn(
+                            "Injury",
+                            width="medium"
+                        ),
+                        "Return": st.column_config.TextColumn(
+                            "Return",
+                            width="small"
+                        )
+                    }
+                )
+
+            if away_injury_updated:
+                st.caption(
+                    f"Updated: {away_injury_updated.strftime('%b %d, %Y %I:%M %p')}"
+                )
+
+        with home_injury_col:
+            st.markdown(f"### {home_team}")
+
+            if not home_injuries:
+                st.write("No injuries listed.")
+
+            else:
+                home_injury_table = []
+
+                for injury in home_injuries:
+                    home_injury_table.append(
+                        {
+                            "Player": injury["player_name"],
+                            "Pos": injury["position"] or "—",
+                            "Status": injury["status"] or "—",
+                            "Injury": (
+                                injury["injury_type"]
+                                or "Undisclosed"
+                            ),
+                            "Return": (
+                                str(injury["return_date"])
+                                if injury["return_date"]
+                                else "—"
+                            )
+                        }
+                    )
+
+                st.dataframe(
+                    home_injury_table,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Player": st.column_config.TextColumn(
+                            "Player",
+                            width="medium"
+                        ),
+                        "Pos": st.column_config.TextColumn(
+                            "Pos",
+                            width="small"
+                        ),
+                        "Status": st.column_config.TextColumn(
+                            "Status",
+                            width="medium"
+                        ),
+                        "Injury": st.column_config.TextColumn(
+                            "Injury",
+                            width="medium"
+                        ),
+                        "Return": st.column_config.TextColumn(
+                            "Return",
+                            width="small"
+                        )
+                    }
+                )
+
+            if home_injury_updated:
+                st.caption(
+                    f"Updated: {home_injury_updated.strftime('%b %d, %Y %I:%M %p')}"
+                )
+
+        if away_injury_changes or home_injury_changes:
+
+            st.divider()
+            st.markdown("### Recent Changes")
+
+            away_change_col, home_change_col = st.columns(2)
+
+            with away_change_col:
+                st.markdown(f"#### {away_team}")
+
+                if not away_injury_changes:
+                    st.write("No recent changes.")
+
+                else:
+                    for change in away_injury_changes:
+
+                        if change["change_type"] == "status_change":
+                            st.write(
+                                f"**{change['player_name']}** — "
+                                f"{change['old_status']} → "
+                                f"{change['new_status']}"
+                            )
+
+                        elif change["change_type"] == "added":
+                            st.write(
+                                f"**{change['player_name']}** — "
+                                f"Added to report "
+                                f"({change['new_status']})"
+                            )
+
+                        elif change["change_type"] == "removed":
+                            st.write(
+                                f"**{change['player_name']}** — "
+                                f"No longer listed"
+                            )
+
+            with home_change_col:
+                st.markdown(f"#### {home_team}")
+
+                if not home_injury_changes:
+                    st.write("No recent changes.")
+
+                else:
+                    for change in home_injury_changes:
+
+                        if change["change_type"] == "status_change":
+                            st.write(
+                                f"**{change['player_name']}** — "
+                                f"{change['old_status']} → "
+                                f"{change['new_status']}"
+                            )
+
+                        elif change["change_type"] == "added":
+                            st.write(
+                                f"**{change['player_name']}** — "
+                                f"Added to report "
+                                f"({change['new_status']})"
+                            )
+
+                        elif change["change_type"] == "removed":
+                            st.write(
+                                f"**{change['player_name']}** — "
+                                f"No longer listed"
+                            )
 
     with weather_tab:
         st.subheader("Weather")
