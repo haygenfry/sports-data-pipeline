@@ -2,7 +2,7 @@ import streamlit as st
 import psycopg2
 from zoneinfo import ZoneInfo
 
-DISPLAY_SEASON = 2026
+DISPLAY_SEASON = 2025
 
 def get_last_three(cursor, team_id, season, game_date):
     cursor.execute(
@@ -3921,139 +3921,268 @@ if st.session_state["selected_game"]:
     with team_stats_tab:
         st.subheader("Team Stats")
 
-        away_stats_col, home_stats_col = st.columns(2)
+        if (
+            away_scoring
+            and home_scoring
+            and away_boxscore
+            and home_boxscore
+            and away_defense
+            and home_defense
+        ):
 
-        with away_stats_col:
-            st.markdown(f"### {away_team}")
+            # -------------------------
+            # SCORING
+            # -------------------------
 
-            if away_scoring:
-                st.write(f"Games Played: {away_scoring['games_played']}")
-                st.write(f"Points/Game: {away_scoring['ppg']:.1f}")
-                st.write(f"Points Allowed/Game: {away_scoring['ppg_allowed']:.1f}")
-                st.write(f"Scoring Margin/Game: {away_scoring['scoring_margin']:+.1f}")
-                st.write(f"Win %: {away_scoring['win_pct']:.3f}")
+            st.markdown("### Scoring")
 
-                if away_scoring["home_ppg"] is not None:
-                    st.write(f"Home PPG: {away_scoring['home_ppg']:.1f}")
+            scoring_rows = [
+                {
+                    "Metric": "Games Played",
+                    away_team: away_scoring["games_played"],
+                    home_team: home_scoring["games_played"]
+                },
+                {
+                    "Metric": "Points / Game",
+                    away_team: f"{away_scoring['ppg']:.1f}",
+                    home_team: f"{home_scoring['ppg']:.1f}"
+                },
+                {
+                    "Metric": "Points Allowed / Game",
+                    away_team: f"{away_scoring['ppg_allowed']:.1f}",
+                    home_team: f"{home_scoring['ppg_allowed']:.1f}"
+                },
+                {
+                    "Metric": "Scoring Margin / Game",
+                    away_team: f"{away_scoring['scoring_margin']:+.1f}",
+                    home_team: f"{home_scoring['scoring_margin']:+.1f}"
+                },
+                {
+                    "Metric": "Win %",
+                    away_team: f"{away_scoring['win_pct'] * 100:.1f}%",
+                    home_team: f"{home_scoring['win_pct'] * 100:.1f}%"
+                },
+                {
+                    "Metric": "Home PPG",
+                    away_team: (
+                        f"{away_scoring['home_ppg']:.1f}"
+                        if away_scoring["home_ppg"] is not None
+                        else "—"
+                    ),
+                    home_team: (
+                        f"{home_scoring['home_ppg']:.1f}"
+                        if home_scoring["home_ppg"] is not None
+                        else "—"
+                    )
+                },
+                {
+                    "Metric": "Road PPG",
+                    away_team: (
+                        f"{away_scoring['road_ppg']:.1f}"
+                        if away_scoring["road_ppg"] is not None
+                        else "—"
+                    ),
+                    home_team: (
+                        f"{home_scoring['road_ppg']:.1f}"
+                        if home_scoring["road_ppg"] is not None
+                        else "—"
+                    )
+                }
+            ]
 
-                if away_scoring["road_ppg"] is not None:
-                    st.write(f"Road PPG: {away_scoring['road_ppg']:.1f}")
+            st.dataframe(
+                scoring_rows,
+                use_container_width=True,
+                hide_index=True
+            )
 
-                st.write(f"Last 3 PPG: {away_scoring['last_three_ppg']:.1f}")
-                st.write(
-                    f"Last 3 PPG Allowed: "
-                    f"{away_scoring['last_three_ppg_allowed']:.1f}"
-                )
+            # -------------------------
+            # OFFENSE
+            # -------------------------
 
-            if away_boxscore:
-                st.write(f"Total Yards/Game: {away_boxscore['total_yards_per_game']:.1f}")
-                st.write(f"Passing Yards/Game: {away_boxscore['passing_yards_per_game']:.1f}")
-                st.write(f"Rushing Yards/Game: {away_boxscore['rushing_yards_per_game']:.1f}")
-                st.write(f"Yards/Play: {away_boxscore['yards_per_play']:.1f}")
-                st.write(f"First Downs/Game: {away_boxscore['first_downs_per_game']:.1f}")
-                st.write(f"Turnovers/Game: {away_boxscore['turnovers_per_game']:.1f}")
-                st.write(f"Third Down %: {away_boxscore['third_down_pct'] * 100:.1f}%")
-                st.write(f"Red Zone %: {away_boxscore['red_zone_pct'] * 100:.1f}%")
-                st.write(f"Avg. Possession: {away_boxscore['average_possession']}")
+            st.markdown("### Offense")
 
-            if away_defense:
-                st.markdown("#### Defense")
-                st.write(f"Yards Allowed/Game: {away_defense['yards_allowed_per_game']:.1f}")
-                st.write(f"Pass Yards Allowed/Game: {away_defense['passing_yards_allowed_per_game']:.1f}")
-                st.write(f"Rush Yards Allowed/Game: {away_defense['rushing_yards_allowed_per_game']:.1f}")
-                st.write(f"Yards/Play Allowed: {away_defense['yards_per_play_allowed']:.1f}")
-                st.write(f"First Downs Allowed/Game: {away_defense['first_downs_allowed_per_game']:.1f}")
-                st.write(f"Takeaways/Game: {away_defense['takeaways_per_game']:.1f}")
-                st.write(f"Opponent Third Down %: {away_defense['opponent_third_down_pct'] * 100:.1f}%")
-                st.write(f"Opponent Red Zone %: {away_defense['opponent_red_zone_pct'] * 100:.1f}%")
-                st.write(f"Defensive TDs: {away_defense['defensive_touchdowns']}")
+            offense_rows = [
+                {
+                    "Metric": "Total Yards / Game",
+                    away_team: f"{away_boxscore['total_yards_per_game']:.1f}",
+                    home_team: f"{home_boxscore['total_yards_per_game']:.1f}"
+                },
+                {
+                    "Metric": "Passing Yards / Game",
+                    away_team: f"{away_boxscore['passing_yards_per_game']:.1f}",
+                    home_team: f"{home_boxscore['passing_yards_per_game']:.1f}"
+                },
+                {
+                    "Metric": "Rushing Yards / Game",
+                    away_team: f"{away_boxscore['rushing_yards_per_game']:.1f}",
+                    home_team: f"{home_boxscore['rushing_yards_per_game']:.1f}"
+                },
+                {
+                    "Metric": "Yards / Play",
+                    away_team: f"{away_boxscore['yards_per_play']:.2f}",
+                    home_team: f"{home_boxscore['yards_per_play']:.2f}"
+                },
+                {
+                    "Metric": "First Downs / Game",
+                    away_team: f"{away_boxscore['first_downs_per_game']:.1f}",
+                    home_team: f"{home_boxscore['first_downs_per_game']:.1f}"
+                },
+                {
+                    "Metric": "Turnovers / Game",
+                    away_team: f"{away_boxscore['turnovers_per_game']:.2f}",
+                    home_team: f"{home_boxscore['turnovers_per_game']:.2f}"
+                },
+                {
+                    "Metric": "3rd Down",
+                    away_team: f"{away_boxscore['third_down_pct'] * 100:.1f}%",
+                    home_team: f"{home_boxscore['third_down_pct'] * 100:.1f}%"
+                },
+                {
+                    "Metric": "Red Zone",
+                    away_team: f"{away_boxscore['red_zone_pct'] * 100:.1f}%",
+                    home_team: f"{home_boxscore['red_zone_pct'] * 100:.1f}%"
+                },
+                {
+                    "Metric": "Avg. Possession",
+                    away_team: away_boxscore["average_possession"],
+                    home_team: home_boxscore["average_possession"]
+                }
+            ]
 
-            else:
-                st.write(f"No {DISPLAY_SEASON} games played.")
+            st.dataframe(
+                offense_rows,
+                use_container_width=True,
+                hide_index=True
+            )
 
-            if away_boxscore and away_defense:
-                st.markdown("#### Recent Form")
+            # -------------------------
+            # DEFENSE
+            # -------------------------
 
-                st.write(
-                    f"Last 3 Yards/Game: "
-                    f"{away_boxscore['last_three_yards_per_game']:.1f}"
-                )
+            st.markdown("### Defense")
 
-                st.write(
-                    f"Last 3 Yards Allowed/Game: "
-                    f"{away_defense['last_three_yards_allowed_per_game']:.1f}"
-                )
+            defense_rows = [
+                {
+                    "Metric": "Yards Allowed / Game",
+                    away_team: f"{away_defense['yards_allowed_per_game']:.1f}",
+                    home_team: f"{home_defense['yards_allowed_per_game']:.1f}"
+                },
+                {
+                    "Metric": "Pass Yards Allowed / Game",
+                    away_team: f"{away_defense['passing_yards_allowed_per_game']:.1f}",
+                    home_team: f"{home_defense['passing_yards_allowed_per_game']:.1f}"
+                },
+                {
+                    "Metric": "Rush Yards Allowed / Game",
+                    away_team: f"{away_defense['rushing_yards_allowed_per_game']:.1f}",
+                    home_team: f"{home_defense['rushing_yards_allowed_per_game']:.1f}"
+                },
+                {
+                    "Metric": "Yards / Play Allowed",
+                    away_team: f"{away_defense['yards_per_play_allowed']:.2f}",
+                    home_team: f"{home_defense['yards_per_play_allowed']:.2f}"
+                },
+                {
+                    "Metric": "First Downs Allowed / Game",
+                    away_team: f"{away_defense['first_downs_allowed_per_game']:.1f}",
+                    home_team: f"{home_defense['first_downs_allowed_per_game']:.1f}"
+                },
+                {
+                    "Metric": "Takeaways / Game",
+                    away_team: f"{away_defense['takeaways_per_game']:.2f}",
+                    home_team: f"{home_defense['takeaways_per_game']:.2f}"
+                },
+                {
+                    "Metric": "Opponent 3rd Down",
+                    away_team: (
+                        f"{away_defense['opponent_third_down_pct'] * 100:.1f}%"
+                    ),
+                    home_team: (
+                        f"{home_defense['opponent_third_down_pct'] * 100:.1f}%"
+                    )
+                },
+                {
+                    "Metric": "Opponent Red Zone",
+                    away_team: (
+                        f"{away_defense['opponent_red_zone_pct'] * 100:.1f}%"
+                    ),
+                    home_team: (
+                        f"{home_defense['opponent_red_zone_pct'] * 100:.1f}%"
+                    )
+                },
+                {
+                    "Metric": "Defensive TDs",
+                    away_team: away_defense["defensive_touchdowns"],
+                    home_team: home_defense["defensive_touchdowns"]
+                }
+            ]
 
-                st.write(
-                    f"Last 3 Turnover Differential: "
-                    f"{away_last_three_turnover_diff:+d}"
-                )
+            st.dataframe(
+                defense_rows,
+                use_container_width=True,
+                hide_index=True
+            )
 
-        with home_stats_col:
-            st.markdown(f"### {home_team}")
+            # -------------------------
+            # RECENT FORM
+            # -------------------------
 
-            if home_scoring:
-                st.write(f"Games Played: {home_scoring['games_played']}")
-                st.write(f"Points/Game: {home_scoring['ppg']:.1f}")
-                st.write(f"Points Allowed/Game: {home_scoring['ppg_allowed']:.1f}")
-                st.write(f"Scoring Margin/Game: {home_scoring['scoring_margin']:+.1f}")
-                st.write(f"Win %: {home_scoring['win_pct']:.3f}")
+            st.divider()
+            st.subheader("Recent Form — Last 3 Games")
 
-                if home_scoring["home_ppg"] is not None:
-                    st.write(f"Home PPG: {home_scoring['home_ppg']:.1f}")
+            recent_form_rows = [
+                {
+                    "Metric": "Record",
+                    away_team: (
+                        " - ".join(away_last_three)
+                        if away_last_three
+                        else "—"
+                    ),
+                    home_team: (
+                        " - ".join(home_last_three)
+                        if home_last_three
+                        else "—"
+                    )
+                },
+                {
+                    "Metric": "Points / Game",
+                    away_team: f"{away_scoring['last_three_ppg']:.1f}",
+                    home_team: f"{home_scoring['last_three_ppg']:.1f}"
+                },
+                {
+                    "Metric": "Points Allowed / Game",
+                    away_team: f"{away_scoring['last_three_ppg_allowed']:.1f}",
+                    home_team: f"{home_scoring['last_three_ppg_allowed']:.1f}"
+                },
+                {
+                    "Metric": "Yards / Game",
+                    away_team: f"{away_boxscore['last_three_yards_per_game']:.1f}",
+                    home_team: f"{home_boxscore['last_three_yards_per_game']:.1f}"
+                },
+                {
+                    "Metric": "Yards Allowed / Game",
+                    away_team: f"{away_defense['last_three_yards_allowed_per_game']:.1f}",
+                    home_team: f"{home_defense['last_three_yards_allowed_per_game']:.1f}"
+                },
+                {
+                    "Metric": "Turnover Differential",
+                    away_team: f"{away_last_three_turnover_diff:+d}",
+                    home_team: f"{home_last_three_turnover_diff:+d}"
+                }
+            ]
 
-                if home_scoring["road_ppg"] is not None:
-                    st.write(f"Road PPG: {home_scoring['road_ppg']:.1f}")
+            st.dataframe(
+                recent_form_rows,
+                use_container_width=True,
+                hide_index=True
+            )
 
-                st.write(f"Last 3 PPG: {home_scoring['last_three_ppg']:.1f}")
-                st.write(
-                    f"Last 3 PPG Allowed: "
-                    f"{home_scoring['last_three_ppg_allowed']:.1f}"
-                )
-
-            if home_boxscore:
-                st.write(f"Total Yards/Game: {home_boxscore['total_yards_per_game']:.1f}")
-                st.write(f"Passing Yards/Game: {home_boxscore['passing_yards_per_game']:.1f}")
-                st.write(f"Rushing Yards/Game: {home_boxscore['rushing_yards_per_game']:.1f}")
-                st.write(f"Yards/Play: {home_boxscore['yards_per_play']:.1f}")
-                st.write(f"First Downs/Game: {home_boxscore['first_downs_per_game']:.1f}")
-                st.write(f"Turnovers/Game: {home_boxscore['turnovers_per_game']:.1f}")
-                st.write(f"Third Down %: {home_boxscore['third_down_pct'] * 100:.1f}%")
-                st.write(f"Red Zone %: {home_boxscore['red_zone_pct'] * 100:.1f}%")
-                st.write(f"Avg. Possession: {home_boxscore['average_possession']}")
-
-            if home_defense:
-                st.markdown("#### Defense")
-                st.write(f"Yards Allowed/Game: {home_defense['yards_allowed_per_game']:.1f}")
-                st.write(f"Pass Yards Allowed/Game: {home_defense['passing_yards_allowed_per_game']:.1f}")
-                st.write(f"Rush Yards Allowed/Game: {home_defense['rushing_yards_allowed_per_game']:.1f}")
-                st.write(f"Yards/Play Allowed: {home_defense['yards_per_play_allowed']:.1f}")
-                st.write(f"First Downs Allowed/Game: {home_defense['first_downs_allowed_per_game']:.1f}")
-                st.write(f"Takeaways/Game: {home_defense['takeaways_per_game']:.1f}")
-                st.write(f"Opponent Third Down %: {home_defense['opponent_third_down_pct'] * 100:.1f}%")
-                st.write(f"Opponent Red Zone %: {home_defense['opponent_red_zone_pct'] * 100:.1f}%")
-                st.write(f"Defensive TDs: {home_defense['defensive_touchdowns']}")
-
-            else:
-                st.write(f"No {DISPLAY_SEASON} games played.")
-
-            if home_boxscore and home_defense:
-                st.markdown("#### Recent Form")
-
-                st.write(
-                    f"Last 3 Yards/Game: "
-                    f"{home_boxscore['last_three_yards_per_game']:.1f}"
-                )
-
-                st.write(
-                    f"Last 3 Yards Allowed/Game: "
-                    f"{home_defense['last_three_yards_allowed_per_game']:.1f}"
-                )
-
-                st.write(
-                    f"Last 3 Turnover Differential: "
-                    f"{home_last_three_turnover_diff:+d}"
-                )
+        else:
+            st.info(
+                f"Team statistics will populate once both teams "
+                f"have completed games in the {DISPLAY_SEASON} season."
+            )
 
     with players_tab:
         st.subheader("Offensive Starters")
