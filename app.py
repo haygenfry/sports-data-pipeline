@@ -2873,6 +2873,152 @@ def get_latest_injury_snapshot_time(
 
     return row[0] if row else None
 
+def get_game_weather(
+    cursor,
+    game_id
+):
+    cursor.execute(
+        """
+        SELECT
+            forecast_time,
+            temperature_f,
+            apparent_temperature_f,
+            precipitation_probability,
+            precipitation_inches,
+            relative_humidity,
+            wind_speed_mph,
+            wind_gust_mph,
+            wind_direction_degrees,
+            weather_code,
+            captured_at
+        FROM nfl_weather_snapshots
+        WHERE game_id = %s
+        ORDER BY captured_at DESC
+        LIMIT 1;
+        """,
+        (game_id,)
+    )
+
+    row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "forecast_time": row[0],
+        "temperature_f": row[1],
+        "apparent_temperature_f": row[2],
+        "precipitation_probability": row[3],
+        "precipitation_inches": row[4],
+        "relative_humidity": row[5],
+        "wind_speed_mph": row[6],
+        "wind_gust_mph": row[7],
+        "wind_direction_degrees": row[8],
+        "weather_code": row[9],
+        "captured_at": row[10]
+    }
+
+def get_weather_description(weather_code):
+    descriptions = {
+        0: "Clear",
+        1: "Mostly Clear",
+        2: "Partly Cloudy",
+        3: "Overcast",
+        45: "Fog",
+        48: "Freezing Fog",
+        51: "Light Drizzle",
+        53: "Drizzle",
+        55: "Heavy Drizzle",
+        56: "Light Freezing Drizzle",
+        57: "Heavy Freezing Drizzle",
+        61: "Light Rain",
+        63: "Rain",
+        65: "Heavy Rain",
+        66: "Light Freezing Rain",
+        67: "Heavy Freezing Rain",
+        71: "Light Snow",
+        73: "Snow",
+        75: "Heavy Snow",
+        77: "Snow Grains",
+        80: "Light Rain Showers",
+        81: "Rain Showers",
+        82: "Heavy Rain Showers",
+        85: "Light Snow Showers",
+        86: "Heavy Snow Showers",
+        95: "Thunderstorms",
+        96: "Thunderstorms with Hail",
+        99: "Severe Thunderstorms with Hail"
+    }
+
+    return descriptions.get(
+        weather_code,
+        "Unknown"
+    )
+
+def display_weather_forecast(game_weather):
+
+    weather_description = get_weather_description(
+        game_weather["weather_code"]
+    )
+
+    temp_col, feels_col, condition_col = st.columns(3)
+
+    with temp_col:
+        st.metric(
+            "Temperature",
+            f"{float(game_weather['temperature_f']):.0f}°F"
+        )
+
+    with feels_col:
+        st.metric(
+            "Feels Like",
+            f"{float(game_weather['apparent_temperature_f']):.0f}°F"
+        )
+
+    with condition_col:
+        st.metric(
+            "Conditions",
+            weather_description
+        )
+
+    st.divider()
+
+    precip_col, humidity_col, wind_col, gust_col = st.columns(4)
+
+    with precip_col:
+        st.metric(
+            "Precipitation",
+            f"{float(game_weather['precipitation_probability']):.0f}%"
+        )
+
+    with humidity_col:
+        st.metric(
+            "Humidity",
+            f"{float(game_weather['relative_humidity']):.0f}%"
+        )
+
+    with wind_col:
+        st.metric(
+            "Wind",
+            f"{float(game_weather['wind_speed_mph']):.1f} mph"
+        )
+
+    with gust_col:
+        st.metric(
+            "Gusts",
+            f"{float(game_weather['wind_gust_mph']):.1f} mph"
+        )
+
+    st.caption(
+        f"Forecast for "
+        f"{game_weather['forecast_time'].strftime('%b %d, %Y %I:%M %p')}"
+    )
+
+    st.caption(
+        f"Forecast updated: "
+        f"{game_weather['captured_at'].strftime('%b %d, %Y %I:%M %p')}"
+    )
+
 OFFENSIVE_DISPLAY_ORDER = [
     "qb",
     "rb",
@@ -2954,6 +3100,7 @@ cursor.execute(
         g.home_home_record,
         g.home_road_record,
         g.venue,
+        g.venue_type,
 
         away_standings.conference,
         away_standings.division_record,
@@ -3024,6 +3171,7 @@ if st.session_state["selected_game"]:
         home_home_record,
         home_road_record,
         venue,
+        venue_type,
         away_conference,
         away_division_record,
         away_conference_record,
@@ -3189,6 +3337,11 @@ if st.session_state["selected_game"]:
         cursor,
         game_id,
         home_team_id
+    )
+
+    game_weather = get_game_weather(
+        cursor,
+        game_id
     )
 
     away_offensive_starters = get_offensive_starters(
@@ -4579,7 +4732,34 @@ if st.session_state["selected_game"]:
 
     with weather_tab:
         st.subheader("Weather")
-        st.write("Game-day weather information coming soon.")
+
+        st.markdown(f"### {venue}")
+
+        if venue_type == "indoor":
+
+            st.info(
+                "Indoor venue — outdoor weather is not expected "
+                "to materially affect game conditions."
+            )
+
+        else:
+
+            if venue_type == "retractable":
+                st.info(
+                    "Retractable-roof venue. Outdoor conditions are shown "
+                    "when available, but actual game conditions will depend "
+                    "on roof status."
+                )
+
+            if not game_weather:
+                st.info(
+                    "Game-time forecast is not available yet. "
+                    "Weather data will begin populating when the game "
+                    "enters the forecast window."
+                )
+
+            else:
+                display_weather_forecast(game_weather)
 
     with betting_tab:
         st.subheader("Betting")
@@ -4639,6 +4819,7 @@ for game in games:
         home_home_record,
         home_road_record,
         venue,
+        venue_type,
         away_conference,
         away_division_record,
         away_conference_record,

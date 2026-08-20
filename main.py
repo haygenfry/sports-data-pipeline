@@ -9,7 +9,7 @@ schedule = []
 for week in range(1, 19):
 
     params = {
-        "dates": "2025",
+        "dates": "2026",
         "seasontype": 2,
         "week": week
     }
@@ -25,7 +25,17 @@ for week in range(1, 19):
         game_id = event["id"]
 
         game_date = event["date"]
-        venue = competition["venue"]["fullName"]
+        venue_info = competition.get("venue", {})
+
+        venue = venue_info.get("fullName")
+        venue_id = venue_info.get("id")
+
+        venue_address = venue_info.get("address", {})
+
+        venue_city = venue_address.get("city")
+        venue_state = venue_address.get("state")
+        venue_zip = venue_address.get("zipCode")
+        venue_country = venue_address.get("country")
 
         home_team = ""
         away_team = ""
@@ -115,7 +125,12 @@ for week in range(1, 19):
             "home_road_record": home_team_road_record,
             "away_home_record": away_team_home_record,
             "away_road_record": away_team_road_record,
-            "venue": venue
+            "venue": venue,
+            "venue_id": venue_id,
+            "venue_city": venue_city,
+            "venue_state": venue_state,
+            "venue_zip": venue_zip,
+            "venue_country": venue_country
         }
 
         schedule.append(game)
@@ -158,11 +173,17 @@ for game in schedule:
             game_state,
             game_status,
             completed,
-            venue
+            venue,
+            venue_id,
+            venue_city,
+            venue_state,
+            venue_zip,
+            venue_country
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s
         )       
         ON CONFLICT (game_id)
         DO UPDATE SET
@@ -186,7 +207,12 @@ for game in schedule:
             game_state = EXCLUDED.game_state,
             game_status = EXCLUDED.game_status,
             completed = EXCLUDED.completed,
-            venue = EXCLUDED.venue
+            venue = EXCLUDED.venue,
+            venue_id = EXCLUDED.venue_id,
+            venue_city = EXCLUDED.venue_city,
+            venue_state = EXCLUDED.venue_state,
+            venue_zip = EXCLUDED.venue_zip,
+            venue_country = EXCLUDED.venue_country
         """,
         (
             game["game_id"],
@@ -210,7 +236,12 @@ for game in schedule:
             game["game_state"],
             game["game_status"],
             game["completed"],
-            game["venue"]
+            game["venue"],
+            game["venue_id"],
+            game["venue_city"],
+            game["venue_state"],
+            game["venue_zip"],
+            game["venue_country"]
         )
     )
 
