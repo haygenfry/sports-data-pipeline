@@ -2,7 +2,42 @@ import streamlit as st
 import psycopg2
 from zoneinfo import ZoneInfo
 
-DISPLAY_SEASON = 2025
+DISPLAY_SEASON = 2026
+
+TEAM_ABBREVIATIONS = {
+    "Arizona Cardinals": "ARI",
+    "Atlanta Falcons": "ATL",
+    "Baltimore Ravens": "BAL",
+    "Buffalo Bills": "BUF",
+    "Carolina Panthers": "CAR",
+    "Chicago Bears": "CHI",
+    "Cincinnati Bengals": "CIN",
+    "Cleveland Browns": "CLE",
+    "Dallas Cowboys": "DAL",
+    "Denver Broncos": "DEN",
+    "Detroit Lions": "DET",
+    "Green Bay Packers": "GB",
+    "Houston Texans": "HOU",
+    "Indianapolis Colts": "IND",
+    "Jacksonville Jaguars": "JAX",
+    "Kansas City Chiefs": "KC",
+    "Las Vegas Raiders": "LV",
+    "Los Angeles Chargers": "LAC",
+    "Los Angeles Rams": "LAR",
+    "Miami Dolphins": "MIA",
+    "Minnesota Vikings": "MIN",
+    "New England Patriots": "NE",
+    "New Orleans Saints": "NO",
+    "New York Giants": "NYG",
+    "New York Jets": "NYJ",
+    "Philadelphia Eagles": "PHI",
+    "Pittsburgh Steelers": "PIT",
+    "San Francisco 49ers": "SF",
+    "Seattle Seahawks": "SEA",
+    "Tampa Bay Buccaneers": "TB",
+    "Tennessee Titans": "TEN",
+    "Washington Commanders": "WAS"
+}
 
 def get_last_three(cursor, team_id, season, game_date):
     cursor.execute(
@@ -4899,6 +4934,14 @@ if st.session_state["selected_game"]:
 
         if head_to_head:
 
+            away_h2h_wins = 0
+            home_h2h_wins = 0
+            ties = 0
+
+            away_margin_total = 0
+
+            history_rows = []
+
             for (
                 h2h_season,
                 h2h_date,
@@ -4908,19 +4951,176 @@ if st.session_state["selected_game"]:
                 h2h_home_score
             ) in head_to_head:
 
-                st.markdown(
-                    f"**{h2h_away_team} {h2h_away_score} "
-                    f"— {h2h_home_team} {h2h_home_score}**"
+                # -------------------------
+                # WINNER
+                # -------------------------
+
+                if h2h_away_score > h2h_home_score:
+                    winner = h2h_away_team
+
+                elif h2h_home_score > h2h_away_score:
+                    winner = h2h_home_team
+
+                else:
+                    winner = "Tie"
+
+                # -------------------------
+                # SELECTED TEAM H2H WINS
+                # -------------------------
+
+                if winner == away_team:
+                    away_h2h_wins += 1
+
+                elif winner == home_team:
+                    home_h2h_wins += 1
+
+                else:
+                    ties += 1
+
+                # -------------------------
+                # MARGIN FROM AWAY TEAM'S
+                # PERSPECTIVE
+                # -------------------------
+
+                if h2h_away_team == away_team:
+                    away_team_score = h2h_away_score
+                    home_team_score = h2h_home_score
+
+                else:
+                    away_team_score = h2h_home_score
+                    home_team_score = h2h_away_score
+
+                away_margin_total += (
+                    away_team_score - home_team_score
                 )
 
-                st.caption(
-                    h2h_date.astimezone(
-                        ZoneInfo("America/New_York")
-                    ).strftime("%B %d, %Y")
+                # -------------------------
+                # DISPLAY ROW
+                # -------------------------
+
+                eastern_date = h2h_date.astimezone(
+                    ZoneInfo("America/New_York")
                 )
+
+                history_rows.append(
+                    {
+                        "Date": eastern_date.strftime(
+                            "%b %d, %Y"
+                        ),
+                        "Season": h2h_season,
+                        "Matchup": (
+                            f"{h2h_away_team} @ "
+                            f"{h2h_home_team}"
+                        ),
+                        "Score": (
+                            f"{h2h_away_score} - "
+                            f"{h2h_home_score}"
+                        ),
+                        "Winner": winner
+                    }
+                )
+
+            # -------------------------
+            # SUMMARY
+            # -------------------------
+
+            games_count = len(head_to_head)
+
+            average_away_margin = (
+                away_margin_total / games_count
+            )
+
+            st.markdown(
+                f"### Last {games_count} Meetings"
+            )
+
+            summary_col_1, summary_col_2, summary_col_3 = (
+                st.columns(3)
+            )
+
+            with summary_col_1:
+                st.metric(
+                    f"{away_team} Wins",
+                    away_h2h_wins
+                )
+
+            with summary_col_2:
+                st.metric(
+                    f"{home_team} Wins",
+                    home_h2h_wins
+                )
+
+            with summary_col_3:
+
+                away_abbr = TEAM_ABBREVIATIONS.get(
+                    away_team,
+                    away_team
+                )
+
+                home_abbr = TEAM_ABBREVIATIONS.get(
+                    home_team,
+                    home_team
+                )
+
+                if average_away_margin > 0:
+                    margin_text = (
+                        f"{away_abbr} "
+                        f"+{average_away_margin:.1f}"
+                    )
+
+                elif average_away_margin < 0:
+                    margin_text = (
+                        f"{home_abbr} "
+                        f"+{abs(average_away_margin):.1f}"
+                    )
+
+                else:
+                    margin_text = "EVEN"
+
+                st.metric(
+                    "Average Margin",
+                    margin_text
+                )
+
+            if ties:
+                st.caption(
+                    f"Ties in sample: {ties}"
+                )
+
+            st.dataframe(
+                history_rows,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Date": st.column_config.TextColumn(
+                        "Date",
+                        width="small"
+                    ),
+                    "Season": st.column_config.NumberColumn(
+                        "Season",
+                        format="%d",
+                        width="small"
+                    ),
+                    "Matchup": st.column_config.TextColumn(
+                        "Matchup",
+                        width="large"
+                    ),
+                    "Score": st.column_config.TextColumn(
+                        "Score",
+                        width="small"
+                    ),
+                    "Winner": st.column_config.TextColumn(
+                        "Winner",
+                        width="medium"
+                    )
+                }
+            )
 
         else:
-            st.write("No previous meetings found.")
+            st.info(
+                "No previous meetings found."
+            )
+
     st.stop()
 
 # -------------------------
