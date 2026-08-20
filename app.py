@@ -1,5 +1,7 @@
 import streamlit as st
 import psycopg2
+import pandas as pd
+import math
 from zoneinfo import ZoneInfo
 
 DISPLAY_SEASON = 2026
@@ -1829,6 +1831,71 @@ def get_matchup_edges(
         )
     }
 
+def get_matchup_prediction_adjustment(
+    away_edges,
+    home_edges
+):
+    if not away_edges or not home_edges:
+        return 0.0
+
+    edge_values = {
+        "Offense edge": 1.0,
+        "Defense edge": -1.0,
+        "Strength vs strength": 0.0,
+        "Weakness vs weakness": 0.0,
+        "Neutral": 0.0
+    }
+
+    metric_weights = {
+        "total_yards": 0.25,
+        "passing_yards": 0.25,
+        "rushing_yards": 0.25,
+        "yards_per_play": 1.00,
+        "third_down": 0.50,
+        "red_zone": 0.50,
+        "turnovers": 0.75
+    }
+
+    def score_team(edges):
+        score = 0.0
+        max_score = 0.0
+
+        for metric, weight in metric_weights.items():
+            result = edges.get(metric)
+
+            score += (
+                edge_values.get(result, 0.0)
+                * weight
+            )
+
+            max_score += weight
+
+        if max_score == 0:
+            return 0.0
+
+        return score / max_score
+
+    away_score = score_team(away_edges)
+    home_score = score_team(home_edges)
+
+    # Positive = home advantage
+    # Negative = away advantage
+    net_matchup_score = (
+        home_score - away_score
+    )
+
+    # Keep matchup influence modest.
+    # Maximum possible contribution = +/- 2 raw-edge units.
+    matchup_adjustment = max(
+        -2.0,
+        min(
+            2.0,
+            net_matchup_score * 2.0
+        )
+    )
+
+    return matchup_adjustment
+
 def build_matchup_summary(
     offense_team,
     defense_team,
@@ -3054,6 +3121,467 @@ def display_weather_forecast(game_weather):
         f"{game_weather['captured_at'].strftime('%b %d, %Y %I:%M %p')}"
     )
 
+def get_latest_betting_snapshot(
+    cursor,
+    game_id
+):
+    cursor.execute(
+        """
+        SELECT
+            provider_name,
+            away_moneyline,
+            home_moneyline,
+            away_spread,
+            home_spread,
+            away_spread_odds,
+            home_spread_odds,
+            total,
+            over_odds,
+            under_odds,
+            opening_away_moneyline,
+            opening_home_moneyline,
+            opening_away_spread,
+            opening_home_spread,
+            opening_total,
+            captured_at
+        FROM nfl_betting_snapshots
+        WHERE game_id = %s
+        ORDER BY captured_at DESC
+        LIMIT 1;
+        """,
+        (game_id,)
+    )
+
+    row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "provider_name": row[0],
+        "away_moneyline": row[1],
+        "home_moneyline": row[2],
+        "away_spread": row[3],
+        "home_spread": row[4],
+        "away_spread_odds": row[5],
+        "home_spread_odds": row[6],
+        "total": row[7],
+        "over_odds": row[8],
+        "under_odds": row[9],
+        "opening_away_moneyline": row[10],
+        "opening_home_moneyline": row[11],
+        "opening_away_spread": row[12],
+        "opening_home_spread": row[13],
+        "opening_total": row[14],
+        "captured_at": row[15]
+    }
+
+def american_odds_to_probability(odds):
+
+    if odds is None:
+        return None
+
+    odds = float(odds)
+
+    if odds < 0:
+        return (
+            abs(odds)
+            / (abs(odds) + 100)
+        )
+
+    return (
+        100
+        / (odds + 100)
+    )
+
+def remove_vig(
+    away_probability,
+    home_probability
+):
+    if (
+        away_probability is None
+        or home_probability is None
+    ):
+        return None, None
+
+    total_probability = (
+        away_probability
+        + home_probability
+    )
+
+    if total_probability == 0:
+        return None, None
+
+    return (
+        away_probability / total_probability,
+        home_probability / total_probability
+    )
+
+def get_team_power_rating(
+    scoring,
+    offense,
+    defense
+):
+    if not scoring or not offense or not defense:
+        return None
+
+    scoring_component = (
+        scoring["scoring_margin"] / 7.0
+    )
+
+    yards_per_play_component = (
+        offense["yards_per_play"]
+        - defense["yards_per_play_allowed"]
+    )
+
+    turnover_component = (
+        defense["takeaways_per_game"]
+        - offense["turnovers_per_game"]
+    )
+
+    third_down_component = (
+        offense["third_down_pct"]
+        - defense["opponent_third_down_pct"]
+    ) * 10
+
+    red_zone_component = (
+        offense["red_zone_pct"]
+        - defense["opponent_red_zone_pct"]
+    ) * 5
+
+    rating = (
+        scoring_component * 2.0
+        + yards_per_play_component * 3.0
+        + turnover_component * 1.5
+        + third_down_component
+        + red_zone_component
+    )
+
+    return {
+        "rating": rating,
+        "scoring_component": scoring_component,
+        "yards_per_play_component": yards_per_play_component,
+        "turnover_component": turnover_component,
+        "third_down_component": third_down_component,
+        "red_zone_component": red_zone_component
+    }
+
+def get_raw_prediction_edge(
+    away_power,
+    home_power,
+    matchup_adjustment=0.0,
+    recent_form_adjustment=0.0
+):
+    if not away_power or not home_power:
+        return None
+
+    power_edge = (
+        home_power["rating"]
+        - away_power["rating"]
+    )
+
+    home_field_edge = 1.5
+
+    raw_edge = (
+        power_edge
+        + home_field_edge
+        + matchup_adjustment
+        + recent_form_adjustment
+    )
+
+    return {
+        "raw_edge": raw_edge,
+        "power_edge": power_edge,
+        "home_field_edge": home_field_edge,
+        "matchup_edge": matchup_adjustment,
+        "recent_form_edge": recent_form_adjustment
+    }
+
+def get_league_power_rankings(
+    cursor,
+    season,
+    cutoff_date
+):
+    cursor.execute(
+        """
+        SELECT DISTINCT
+            team_id,
+            team_name
+        FROM (
+            SELECT
+                home_team_id AS team_id,
+                home_team AS team_name
+            FROM nfl_games
+            WHERE season = %s
+
+            UNION
+
+            SELECT
+                away_team_id AS team_id,
+                away_team AS team_name
+            FROM nfl_games
+            WHERE season = %s
+        ) teams
+        WHERE team_id IS NOT NULL
+        ORDER BY team_name;
+        """,
+        (season, season)
+    )
+
+    teams = cursor.fetchall()
+
+    rankings = []
+
+    for team_id, team_name in teams:
+
+        scoring = get_team_scoring_profile(
+            cursor,
+            team_id,
+            season,
+            cutoff_date
+        )
+
+        offense = get_team_boxscore_profile(
+            cursor,
+            team_id,
+            season,
+            cutoff_date
+        )
+
+        defense = get_team_defensive_profile(
+            cursor,
+            team_id,
+            season,
+            cutoff_date
+        )
+
+        power = get_team_power_rating(
+            scoring,
+            offense,
+            defense
+        )
+
+        if power is not None:
+            rankings.append(
+                {
+                    "team": team_name,
+                    "rating": power["rating"]
+                }
+            )
+
+    rankings.sort(
+        key=lambda team: team["rating"],
+        reverse=True
+    )
+
+    for index, team in enumerate(
+        rankings,
+        start=1
+    ):
+        team["rank"] = index
+
+    return rankings
+
+def get_recent_form_adjustment(
+    away_scoring,
+    home_scoring,
+    away_offense,
+    home_offense,
+    away_defense,
+    home_defense
+):
+    if (
+        not away_scoring
+        or not home_scoring
+        or not away_offense
+        or not home_offense
+        or not away_defense
+        or not home_defense
+    ):
+        return 0.0
+
+    away_scoring_margin = (
+        away_scoring["last_three_ppg"]
+        - away_scoring["last_three_ppg_allowed"]
+    )
+
+    home_scoring_margin = (
+        home_scoring["last_three_ppg"]
+        - home_scoring["last_three_ppg_allowed"]
+    )
+
+    away_yard_margin = (
+        away_offense["last_three_yards_per_game"]
+        - away_defense["last_three_yards_allowed_per_game"]
+    )
+
+    home_yard_margin = (
+        home_offense["last_three_yards_per_game"]
+        - home_defense["last_three_yards_allowed_per_game"]
+    )
+
+    away_turnover_margin = (
+        away_defense["last_three_takeaways"]
+        - away_offense["last_three_turnovers"]
+    )
+
+    home_turnover_margin = (
+        home_defense["last_three_takeaways"]
+        - home_offense["last_three_turnovers"]
+    )
+
+    scoring_difference = (
+        home_scoring_margin
+        - away_scoring_margin
+    )
+
+    yard_difference = (
+        home_yard_margin
+        - away_yard_margin
+    )
+
+    turnover_difference = (
+        home_turnover_margin
+        - away_turnover_margin
+    )
+
+    scoring_component = scoring_difference / 14.0
+    yard_component = yard_difference / 150.0
+    turnover_component = turnover_difference / 4.0
+
+    recent_form_score = (
+        scoring_component * 0.5
+        + yard_component * 0.3
+        + turnover_component * 0.2
+    )
+
+    recent_form_adjustment = max(
+        -1.5,
+        min(
+            1.5,
+            recent_form_score * 1.5
+        )
+    )
+
+    return recent_form_adjustment
+
+def calibrate_win_probability(
+    raw_edge
+):
+    if raw_edge is None:
+        return None
+
+    intercept = 0.065562
+    coefficient = 0.095543
+
+    logit = (
+        intercept
+        + coefficient * raw_edge
+    )
+
+    home_probability = (
+        1
+        / (1 + math.exp(-logit))
+    )
+
+    away_probability = (
+        1 - home_probability
+    )
+
+    return {
+        "home_win_probability": home_probability,
+        "away_win_probability": away_probability
+    }
+
+def get_season_blend_weights(
+    current_games_played
+):
+    if current_games_played <= 0:
+        return {
+            "previous_season": 1.0,
+            "current_season": 0.0
+        }
+
+    if current_games_played == 1:
+        return {
+            "previous_season": 0.75,
+            "current_season": 0.25
+        }
+
+    if current_games_played == 2:
+        return {
+            "previous_season": 0.50,
+            "current_season": 0.50
+        }
+
+    if current_games_played == 3:
+        return {
+            "previous_season": 0.25,
+            "current_season": 0.75
+        }
+
+    return {
+        "previous_season": 0.0,
+        "current_season": 1.0
+    }
+
+def blend_profile(
+    previous_profile,
+    current_profile,
+    previous_weight,
+    current_weight
+):
+    if previous_profile is None and current_profile is None:
+        return None
+
+    if previous_profile is None:
+        return current_profile
+
+    if current_profile is None:
+        return previous_profile
+
+    blended = {}
+
+    non_blended_keys = {
+        "games_played",
+        "last_three_ppg",
+        "last_three_ppg_allowed"
+    }
+
+    keys = (
+        set(previous_profile.keys())
+        | set(current_profile.keys())
+    )
+
+    for key in keys:
+        previous_value = previous_profile.get(key)
+        current_value = current_profile.get(key)
+
+        if key in non_blended_keys:
+            blended[key] = (
+                current_value
+                if current_value is not None
+                else previous_value
+            )
+            continue
+
+        if isinstance(previous_value, (int, float)) and isinstance(
+            current_value,
+            (int, float)
+        ):
+            blended[key] = (
+                previous_value * previous_weight
+                + current_value * current_weight
+            )
+
+        elif current_value is not None:
+            blended[key] = current_value
+
+        else:
+            blended[key] = previous_value
+
+    return blended
+
 OFFENSIVE_DISPLAY_ORDER = [
     "qb",
     "rb",
@@ -3252,6 +3780,26 @@ if st.session_state["selected_game"]:
         game_date
     )
 
+    away_current_games = (
+        away_scoring["games_played"]
+        if away_scoring
+        else 0
+    )
+
+    home_current_games = (
+        home_scoring["games_played"]
+        if home_scoring
+        else 0
+    )
+
+    away_blend_weights = get_season_blend_weights(
+        away_current_games
+    )
+
+    home_blend_weights = get_season_blend_weights(
+        home_current_games
+    )
+
     away_boxscore = get_team_boxscore_profile(
         cursor,
         away_team_id,
@@ -3280,14 +3828,112 @@ if st.session_state["selected_game"]:
         game_date
     )
 
-    away_offense_vs_home_defense = get_matchup_comparison(
+    previous_season = DISPLAY_SEASON - 1
+
+    away_previous_scoring = get_team_scoring_profile(
+        cursor,
+        away_team_id,
+        previous_season,
+        game_date
+    )
+
+    home_previous_scoring = get_team_scoring_profile(
+        cursor,
+        home_team_id,
+        previous_season,
+        game_date
+    )
+
+    away_previous_boxscore = get_team_boxscore_profile(
+        cursor,
+        away_team_id,
+        previous_season,
+        game_date
+    )
+
+    home_previous_boxscore = get_team_boxscore_profile(
+        cursor,
+        home_team_id,
+        previous_season,
+        game_date
+    )
+
+    away_previous_defense = get_team_defensive_profile(
+        cursor,
+        away_team_id,
+        previous_season,
+        game_date
+    )
+
+    home_previous_defense = get_team_defensive_profile(
+        cursor,
+        home_team_id,
+        previous_season,
+        game_date
+    )
+
+    away_scoring_blended = blend_profile(
+        away_previous_scoring,
+        away_scoring,
+        away_blend_weights["previous_season"],
+        away_blend_weights["current_season"]
+    )
+
+    home_scoring_blended = blend_profile(
+        home_previous_scoring,
+        home_scoring,
+        home_blend_weights["previous_season"],
+        home_blend_weights["current_season"]
+    )
+
+    away_boxscore_blended = blend_profile(
+        away_previous_boxscore,
         away_boxscore,
-        home_defense
+        away_blend_weights["previous_season"],
+        away_blend_weights["current_season"]
+    )
+
+    home_boxscore_blended = blend_profile(
+        home_previous_boxscore,
+        home_boxscore,
+        home_blend_weights["previous_season"],
+        home_blend_weights["current_season"]
+    )
+
+    away_defense_blended = blend_profile(
+        away_previous_defense,
+        away_defense,
+        away_blend_weights["previous_season"],
+        away_blend_weights["current_season"]
+    )
+
+    home_defense_blended = blend_profile(
+        home_previous_defense,
+        home_defense,
+        home_blend_weights["previous_season"],
+        home_blend_weights["current_season"]
+    )
+
+    away_offense_vs_home_defense = get_matchup_comparison(
+        away_boxscore_blended,
+        home_defense_blended
     )
 
     home_offense_vs_away_defense = get_matchup_comparison(
-        home_boxscore,
-        away_defense
+        home_boxscore_blended,
+        away_defense_blended
+    )
+
+    away_power_rating = get_team_power_rating(
+        away_scoring_blended,
+        away_boxscore_blended,
+        away_defense_blended
+    )
+
+    home_power_rating = get_team_power_rating(
+        home_scoring_blended,
+        home_boxscore_blended,
+        home_defense_blended
     )
 
     away_matchup_advantages = get_matchup_advantages(
@@ -3312,6 +3958,35 @@ if st.session_state["selected_game"]:
     home_matchup_edges = get_matchup_edges(
         home_offense_vs_away_defense,
         league_matchup_baselines
+    )
+
+    matchup_prediction_adjustment = (
+        get_matchup_prediction_adjustment(
+            away_matchup_edges,
+            home_matchup_edges
+        )
+    )
+
+    recent_form_adjustment = get_recent_form_adjustment(
+        away_scoring,
+        home_scoring,
+        away_boxscore,
+        home_boxscore,
+        away_defense,
+        home_defense
+    )
+
+    raw_prediction_edge = get_raw_prediction_edge(
+        away_power_rating,
+        home_power_rating,
+        matchup_prediction_adjustment,
+        recent_form_adjustment
+    )
+
+    game_prediction = calibrate_win_probability(
+        raw_prediction_edge["raw_edge"]
+        if raw_prediction_edge
+        else None
     )
 
     away_game_team_stats = get_game_team_stats(
@@ -3378,6 +4053,34 @@ if st.session_state["selected_game"]:
         cursor,
         game_id
     )
+
+    game_betting = get_latest_betting_snapshot(
+        cursor,
+        game_id
+    )
+
+    away_ml_probability = None
+    home_ml_probability = None
+
+    away_no_vig_probability = None
+    home_no_vig_probability = None
+
+    if game_betting:
+        away_ml_probability = american_odds_to_probability(
+            game_betting["away_moneyline"]
+        )
+
+        home_ml_probability = american_odds_to_probability(
+            game_betting["home_moneyline"]
+        )
+
+        (
+            away_no_vig_probability,
+            home_no_vig_probability
+        ) = remove_vig(
+            away_ml_probability,
+            home_ml_probability
+        )
 
     away_offensive_starters = get_offensive_starters(
         cursor,
@@ -3687,6 +4390,30 @@ if st.session_state["selected_game"]:
         "ST"
     )
 
+    league_power_rankings = get_league_power_rankings(
+        cursor,
+        DISPLAY_SEASON,
+        game_date
+    )
+
+    away_league_power = next(
+        (
+            team
+            for team in league_power_rankings
+            if team["team"] == away_team
+        ),
+        None
+    )
+
+    home_league_power = next(
+        (
+            team
+            for team in league_power_rankings
+            if team["team"] == home_team
+        ),
+        None
+    )
+
     away_offensive_depth_profile_map = {}
 
     for player in away_offensive_depth:
@@ -3929,6 +4656,7 @@ if st.session_state["selected_game"]:
 
     (
         overview_tab,
+        prediction_tab,
         team_stats_tab,
         players_tab,
         matchup_tab,
@@ -3939,6 +4667,7 @@ if st.session_state["selected_game"]:
         history_tab
     ) = st.tabs([
         "Overview",
+        "Prediction",
         "Team Stats",
         "Players",
         "Matchup",
@@ -3952,6 +4681,182 @@ if st.session_state["selected_game"]:
     with overview_tab:
         st.subheader("Game Overview")
         st.write("Prediction and matchup summary coming soon.")
+
+    with prediction_tab:
+        st.subheader("Game Prediction")
+
+        if not game_prediction:
+            st.info(
+                "Prediction unavailable for this game."
+            )
+
+        else:
+            away_probability = (
+                game_prediction[
+                    "away_win_probability"
+                ]
+                * 100
+            )
+
+            home_probability = (
+                game_prediction[
+                    "home_win_probability"
+                ]
+                * 100
+            )
+
+            away_prediction_col, home_prediction_col = (
+                st.columns(2)
+            )
+
+            with away_prediction_col:
+                st.markdown(
+                    f"### {away_team}"
+                )
+
+                st.metric(
+                    "Win Probability",
+                    f"{away_probability:.1f}%"
+                )
+
+            with home_prediction_col:
+                st.markdown(
+                    f"### {home_team}"
+                )
+
+                st.metric(
+                    "Win Probability",
+                    f"{home_probability:.1f}%"
+                )
+
+            if away_probability > home_probability:
+                predicted_winner = away_team
+                predicted_probability = away_probability
+
+            else:
+                predicted_winner = home_team
+                predicted_probability = home_probability
+
+            st.markdown("### Model Pick")
+
+            st.write(
+                f"{predicted_winner} "
+                f"({predicted_probability:.1f}%)"
+            )
+
+        st.divider()
+
+        st.subheader("Prediction Breakdown")
+
+        breakdown_rows = []
+
+        if raw_prediction_edge:
+            breakdown_rows = [
+                {
+                    "Component": "Power Rating",
+                    "Adjustment": raw_prediction_edge["power_edge"]
+                },
+                {
+                    "Component": "Home Field",
+                    "Adjustment": raw_prediction_edge["home_field_edge"]
+                },
+                {
+                    "Component": "Matchup",
+                    "Adjustment": raw_prediction_edge["matchup_edge"]
+                },
+                {
+                    "Component": "Recent Form",
+                    "Adjustment": raw_prediction_edge["recent_form_edge"]
+                }
+            ]
+
+            breakdown_df = pd.DataFrame(
+                breakdown_rows
+            )
+
+            breakdown_df["Adjustment"] = (
+                breakdown_df["Adjustment"]
+                .map(lambda value: f"{value:+.2f}")
+            )
+
+            st.dataframe(
+                breakdown_df,
+                hide_index=True,
+                use_container_width=True
+            )
+
+            st.caption(
+                f"Positive adjustments favor {home_team}. "
+                f"Negative adjustments favor {away_team}."
+            )
+
+        st.divider()
+
+        st.subheader("Model vs Market")
+
+        if (
+            game_prediction is not None
+            and away_no_vig_probability is not None
+            and home_no_vig_probability is not None
+        ):
+            away_model_probability = (
+                game_prediction["away_win_probability"]
+            )
+
+            home_model_probability = (
+                game_prediction["home_win_probability"]
+            )
+
+            away_market_edge = (
+                away_model_probability
+                - away_no_vig_probability
+            )
+
+            home_market_edge = (
+                home_model_probability
+                - home_no_vig_probability
+            )
+
+            model_market_df = pd.DataFrame(
+                [
+                    {
+                        "Team": away_team,
+                        "Model": f"{away_model_probability * 100:.1f}%",
+                        "Market": f"{away_no_vig_probability * 100:.1f}%",
+                        "Difference": f"{away_market_edge * 100:+.1f}%"
+                    },
+                    {
+                        "Team": home_team,
+                        "Model": f"{home_model_probability * 100:.1f}%",
+                        "Market": f"{home_no_vig_probability * 100:.1f}%",
+                        "Difference": f"{home_market_edge * 100:+.1f}%"
+                    }
+                ]
+            )
+
+            st.dataframe(
+                model_market_df,
+                hide_index=True,
+                use_container_width=True
+            )
+
+            st.caption(
+                "Difference shows the model's win probability "
+                "minus the sportsbook's no-vig market probability."
+            )
+
+        else:
+            if game_prediction is None:
+                st.info(
+                    "Model comparison will populate once enough "
+                    "2026 game data is available to generate a prediction."
+                )
+
+            else:
+                st.info(
+                    "Market comparison is unavailable because "
+                    "moneyline odds are not available for this game."
+                )
 
     with team_stats_tab:
         st.subheader("Team Stats")
@@ -4477,6 +5382,47 @@ if st.session_state["selected_game"]:
                             st.caption("No listed player")
 
     with matchup_tab:
+
+        st.subheader("Power Ratings")
+
+        if away_league_power and home_league_power:
+
+            away_power_col, home_power_col = st.columns(2)
+
+            with away_power_col:
+                st.markdown(f"### {away_team}")
+
+                st.metric(
+                    "League Rank",
+                    f"#{away_league_power['rank']}"
+                )
+
+                st.metric(
+                    "Power Rating",
+                    f"{away_league_power['rating']:+.2f}"
+                )
+
+            with home_power_col:
+                st.markdown(f"### {home_team}")
+
+                st.metric(
+                    "League Rank",
+                    f"#{home_league_power['rank']}"
+                )
+
+                st.metric(
+                    "Power Rating",
+                    f"{home_league_power['rating']:+.2f}"
+                )
+
+        else:
+            st.info(
+                "Power ratings will populate once both teams "
+                "have completed games this season."
+            )
+
+        st.divider()
+
         st.subheader("Offense vs Defense")
 
         render_matchup_table(
@@ -4927,7 +5873,195 @@ if st.session_state["selected_game"]:
 
     with betting_tab:
         st.subheader("Betting")
-        st.write("Lines and implied probabilities coming soon.")
+
+        if not game_betting:
+            st.info("No betting market is currently available for this game.")
+
+        else:
+            provider_name = game_betting["provider_name"] or "Market"
+
+            st.caption(f"Odds via {provider_name}")
+
+            # -------------------------
+            # CURRENT MARKET
+            # -------------------------
+
+            st.markdown("### Current Market")
+
+            spread_col, moneyline_col, total_col = st.columns(3)
+
+            with spread_col:
+                st.markdown("#### Spread")
+
+                if game_betting["away_spread"] is not None:
+                    st.write(
+                        f"**{away_team}:** "
+                        f"{float(game_betting['away_spread']):+g} "
+                        f"({game_betting['away_spread_odds'] or '—'})"
+                    )
+                else:
+                    st.write(f"**{away_team}:** OFF")
+
+                if game_betting["home_spread"] is not None:
+                    st.write(
+                        f"**{home_team}:** "
+                        f"{float(game_betting['home_spread']):+g} "
+                        f"({game_betting['home_spread_odds'] or '—'})"
+                    )
+                else:
+                    st.write(f"**{home_team}:** OFF")
+
+            with moneyline_col:
+                st.markdown("#### Moneyline")
+
+                if game_betting["away_moneyline"] is not None:
+                    st.write(
+                        f"**{away_team}:** "
+                        f"{int(game_betting['away_moneyline']):+d}"
+                    )
+                else:
+                    st.write(f"**{away_team}:** —")
+
+                if game_betting["home_moneyline"] is not None:
+                    st.write(
+                        f"**{home_team}:** "
+                        f"{int(game_betting['home_moneyline']):+d}"
+                    )
+                else:
+                    st.write(f"**{home_team}:** —")
+
+            with total_col:
+                st.markdown("#### Total")
+
+                if game_betting["total"] is not None:
+                    st.write(
+                        f"**O/U:** "
+                        f"{float(game_betting['total']):.1f}"
+                    )
+
+                    st.write(
+                        f"Over: {game_betting['over_odds'] or '—'}"
+                    )
+
+                    st.write(
+                        f"Under: {game_betting['under_odds'] or '—'}"
+                    )
+                else:
+                    st.write("Total: OFF")
+
+            # -------------------------
+            # IMPLIED PROBABILITY
+            # -------------------------
+
+            st.divider()
+            st.markdown("### Market Win Probability")
+            st.caption("Moneyline-implied probability with sportsbook vig removed.")
+
+            away_prob_col, home_prob_col = st.columns(2)
+
+            with away_prob_col:
+                if away_no_vig_probability is not None:
+                    st.metric(
+                        away_team,
+                        f"{away_no_vig_probability * 100:.1f}%"
+                    )
+                else:
+                    st.metric(away_team, "—")
+
+            with home_prob_col:
+                if home_no_vig_probability is not None:
+                    st.metric(
+                        home_team,
+                        f"{home_no_vig_probability * 100:.1f}%"
+                    )
+                else:
+                    st.metric(home_team, "—")
+
+            # -------------------------
+            # OPENING VS CURRENT
+            # -------------------------
+
+            st.divider()
+            st.markdown("### Opening vs Current")
+
+            market_rows = [
+                {
+                    "Market": f"{away_team} Spread",
+                    "Opening": (
+                        f"{float(game_betting['opening_away_spread']):+g}"
+                        if game_betting["opening_away_spread"] is not None
+                        else "—"
+                    ),
+                    "Current": (
+                        f"{float(game_betting['away_spread']):+g}"
+                        if game_betting["away_spread"] is not None
+                        else "OFF"
+                    )
+                },
+                {
+                    "Market": f"{home_team} Spread",
+                    "Opening": (
+                        f"{float(game_betting['opening_home_spread']):+g}"
+                        if game_betting["opening_home_spread"] is not None
+                        else "—"
+                    ),
+                    "Current": (
+                        f"{float(game_betting['home_spread']):+g}"
+                        if game_betting["home_spread"] is not None
+                        else "OFF"
+                    )
+                },
+                {
+                    "Market": f"{away_team} Moneyline",
+                    "Opening": (
+                        f"{int(game_betting['opening_away_moneyline']):+d}"
+                        if game_betting["opening_away_moneyline"] is not None
+                        else "—"
+                    ),
+                    "Current": (
+                        f"{int(game_betting['away_moneyline']):+d}"
+                        if game_betting["away_moneyline"] is not None
+                        else "—"
+                    )
+                },
+                {
+                    "Market": f"{home_team} Moneyline",
+                    "Opening": (
+                        f"{int(game_betting['opening_home_moneyline']):+d}"
+                        if game_betting["opening_home_moneyline"] is not None
+                        else "—"
+                    ),
+                    "Current": (
+                        f"{int(game_betting['home_moneyline']):+d}"
+                        if game_betting["home_moneyline"] is not None
+                        else "—"
+                    )
+                },
+                {
+                    "Market": "Total",
+                    "Opening": (
+                        f"{float(game_betting['opening_total']):.1f}"
+                        if game_betting["opening_total"] is not None
+                        else "—"
+                    ),
+                    "Current": (
+                        f"{float(game_betting['total']):.1f}"
+                        if game_betting["total"] is not None
+                        else "OFF"
+                    )
+                }
+            ]
+
+            st.dataframe(
+                market_rows,
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.caption(
+                f"Snapshot captured: "
+                f"{game_betting['captured_at'].strftime('%b %d, %Y %I:%M %p')}"
+            )
 
     with history_tab:
         st.subheader("Head-to-Head")
