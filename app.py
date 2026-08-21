@@ -3582,6 +3582,18 @@ def blend_profile(
 
     return blended
 
+def get_prediction_confidence(probability):
+    if probability < 0.55:
+        return "Toss-up"
+
+    if probability < 0.60:
+        return "Lean"
+
+    if probability < 0.70:
+        return "Moderate"
+
+    return "Strong"
+
 OFFENSIVE_DISPLAY_ORDER = [
     "qb",
     "rb",
@@ -4737,11 +4749,19 @@ if st.session_state["selected_game"]:
                 predicted_winner = home_team
                 predicted_probability = home_probability
 
+            prediction_confidence = get_prediction_confidence(
+                predicted_probability / 100
+            )
+
             st.markdown("### Model Pick")
 
             st.write(
                 f"{predicted_winner} "
                 f"({predicted_probability:.1f}%)"
+            )
+
+            st.caption(
+                f"Confidence: {prediction_confidence}"
             )
 
         st.divider()
@@ -4839,6 +4859,20 @@ if st.session_state["selected_game"]:
                 hide_index=True,
                 use_container_width=True
             )
+
+            if away_market_edge > home_market_edge:
+                market_edge_team = away_team
+                market_edge_value = away_market_edge
+            else:
+                market_edge_team = home_team
+                market_edge_value = home_market_edge
+
+            if market_edge_value > 0:
+                st.info(
+                    f"Model edge: {market_edge_team} is "
+                    f"{market_edge_value * 100:.1f} percentage points "
+                    f"higher than the market."
+                )
 
             st.caption(
                 "Difference shows the model's win probability "
