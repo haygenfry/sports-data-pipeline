@@ -4,7 +4,7 @@ import pandas as pd
 import math
 from zoneinfo import ZoneInfo
 
-DISPLAY_SEASON = 2026
+DISPLAY_SEASON = 2025
 
 TEAM_ABBREVIATIONS = {
     "Arizona Cardinals": "ARI",
@@ -1904,38 +1904,48 @@ def build_matchup_summary(
     if not edges:
         return None
 
+    metric_labels = {
+        "total_yards": "total yardage",
+        "passing_yards": "passing",
+        "rushing_yards": "rushing",
+        "yards_per_play": "yards per play",
+        "third_down": "third down",
+        "red_zone": "red zone",
+        "turnovers": "turnovers"
+    }
+
     offense_edges = [
-        metric
+        metric_labels.get(metric, metric)
         for metric, result in edges.items()
         if result == "Offense edge"
     ]
 
     defense_edges = [
-        metric
+        metric_labels.get(metric, metric)
         for metric, result in edges.items()
         if result == "Defense edge"
     ]
 
     strength_vs_strength = [
-        metric
+        metric_labels.get(metric, metric)
         for metric, result in edges.items()
         if result == "Strength vs strength"
     ]
 
     weakness_vs_weakness = [
-        metric
+        metric_labels.get(metric, metric)
         for metric, result in edges.items()
         if result == "Weakness vs weakness"
     ]
 
     if len(offense_edges) > len(defense_edges):
         summary = (
-            f"{offense_team}'s offense holds the broader matchup edge."
+            f"{possessive(offense_team)} offense holds the broader matchup edge."
         )
 
     elif len(defense_edges) > len(offense_edges):
         summary = (
-            f"{defense_team}'s defense holds the broader matchup edge."
+            f"{possessive(defense_team)} defense holds the broader matchup edge."
         )
 
     else:
@@ -1945,17 +1955,23 @@ def build_matchup_summary(
 
     if strength_vs_strength:
         summary += (
-            f" Strength vs strength shows up in "
+            f" Strength vs strength appears in "
             f"{', '.join(strength_vs_strength)}."
         )
 
     if weakness_vs_weakness:
         summary += (
-            f" Weakness vs weakness shows up in "
+            f" Both units have struggled in "
             f"{', '.join(weakness_vs_weakness)}."
         )
 
     return summary
+
+def possessive(name):
+    if name.endswith("s"):
+        return f"{name}'"
+
+    return f"{name}'s"
 
 def render_matchup_table(
     offense_team,
@@ -1972,9 +1988,9 @@ def render_matchup_table(
         return
 
     st.caption(
-        f"{offense_team}'s offensive production compared with "
-        f"{defense_team}'s defensive performance entering this game."
-    )
+        f"{possessive(offense_team)} offensive production compared with "
+        f"{possessive(defense_team)} defensive performance entering this game."
+        )
 
     summary = build_matchup_summary(
         offense_team,
@@ -2105,6 +2121,60 @@ def render_matchup_table(
 
         with read_col:
             st.write(matchup_read)
+
+def get_matchup_advantage_summary(
+    away_team,
+    home_team,
+    away_edges,
+    home_edges
+):
+    if not away_edges or not home_edges:
+        return None
+
+    metric_labels = {
+        "total_yards": "Total Yards",
+        "passing_yards": "Passing",
+        "rushing_yards": "Rushing",
+        "yards_per_play": "Yards / Play",
+        "third_down": "Third Down",
+        "red_zone": "Red Zone",
+        "turnovers": "Turnovers"
+    }
+
+    away_advantages = []
+    home_advantages = []
+
+    for metric, label in metric_labels.items():
+
+        away_result = away_edges.get(metric)
+        home_result = home_edges.get(metric)
+
+        if away_result == "Offense edge":
+            away_advantages.append(
+                f"{label} — offensive edge"
+            )
+
+        elif away_result == "Defense edge":
+            home_advantages.append(
+                f"{label} — defensive edge"
+            )
+
+        if home_result == "Offense edge":
+            home_advantages.append(
+                f"{label} — offensive edge"
+            )
+
+        elif home_result == "Defense edge":
+            away_advantages.append(
+                f"{label} — defensive edge"
+            )
+
+    return {
+        "away_team": away_team,
+        "home_team": home_team,
+        "away_advantages": away_advantages,
+        "home_advantages": home_advantages
+    }
 
 def get_game_team_stats(
     cursor,
@@ -5454,6 +5524,62 @@ if st.session_state["selected_game"]:
                 "Power ratings will populate once both teams "
                 "have completed games this season."
             )
+
+        st.divider()
+
+        matchup_summary = get_matchup_advantage_summary(
+            away_team,
+            home_team,
+            away_matchup_edges,
+            home_matchup_edges
+        )
+
+        st.subheader("Matchup Advantages")
+
+        if matchup_summary:
+
+            away_adv_col, home_adv_col = st.columns(2)
+
+            with away_adv_col:
+                st.markdown(f"### {away_team}")
+
+                if matchup_summary["away_advantages"]:
+                    for advantage in matchup_summary["away_advantages"]:
+                        st.write(f"• {advantage}")
+                else:
+                    st.write("No clear matchup advantages.")
+
+            with home_adv_col:
+                st.markdown(f"### {home_team}")
+
+                if matchup_summary["home_advantages"]:
+                    for advantage in matchup_summary["home_advantages"]:
+                        st.write(f"• {advantage}")
+                else:
+                    st.write("No clear matchup advantages.")
+
+        else:
+            st.info(
+                "Current-season matchup advantages are not available yet."
+            )
+
+        if matchup_prediction_adjustment is not None:
+
+            if matchup_prediction_adjustment > 0.25:
+                matchup_lean_team = home_team
+
+            elif matchup_prediction_adjustment < -0.25:
+                matchup_lean_team = away_team
+
+            else:
+                matchup_lean_team = None
+
+            st.markdown("#### Overall Matchup Lean")
+
+            if matchup_lean_team:
+                st.write(matchup_lean_team)
+            else:
+                st.write("Roughly even")
 
         st.divider()
 
