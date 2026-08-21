@@ -3336,6 +3336,70 @@ def get_team_power_rating(
         "red_zone_component": red_zone_component
     }
 
+def get_team_record_before_date(
+    cursor,
+    team_id,
+    season,
+    cutoff_date
+):
+    cursor.execute(
+        """
+        SELECT
+            home_team_id,
+            home_score,
+            away_team_id,
+            away_score
+        FROM nfl_games
+        WHERE completed = TRUE
+          AND season = %s
+          AND game_date < %s
+          AND (
+              home_team_id = %s
+              OR away_team_id = %s
+          )
+        ORDER BY game_date;
+        """,
+        (
+            season,
+            cutoff_date,
+            team_id,
+            team_id
+        )
+    )
+
+    games = cursor.fetchall()
+
+    wins = 0
+    losses = 0
+    ties = 0
+
+    for (
+        home_team_id,
+        home_score,
+        away_team_id,
+        away_score
+    ) in games:
+
+        if home_score == away_score:
+            ties += 1
+
+        elif home_team_id == team_id:
+            if home_score > away_score:
+                wins += 1
+            else:
+                losses += 1
+
+        else:
+            if away_score > home_score:
+                wins += 1
+            else:
+                losses += 1
+
+    if ties:
+        return f"{wins}-{losses}-{ties}"
+
+    return f"{wins}-{losses}"
+
 def get_raw_prediction_edge(
     away_power,
     home_power,
@@ -3718,13 +3782,45 @@ connection = psycopg2.connect(
     password="nfl_password"
 )
 
-st.title(f"NFL {DISPLAY_SEASON} Schedule")
+if "page" not in st.session_state:
+    st.session_state["page"] = "schedule"
 
-selected_week = st.selectbox(
-    "Select Week",
-    list(range(1, 19))
-)
+if "selected_game" not in st.session_state:
+    st.session_state["selected_game"] = None
 
+
+nav_schedule, nav_power = st.columns(2)
+
+with nav_schedule:
+    if st.button(
+        "Schedule",
+        use_container_width=True
+    ):
+        st.session_state["page"] = "schedule"
+        st.session_state["selected_game"] = None
+        st.rerun()
+
+with nav_power:
+    if st.button(
+        "Power Rankings",
+        use_container_width=True
+    ):
+        st.session_state["page"] = "power_rankings"
+        st.session_state["selected_game"] = None
+        st.rerun()
+
+
+if st.session_state["page"] == "schedule":
+
+    st.title(f"NFL {DISPLAY_SEASON} Schedule")
+
+    selected_week = st.selectbox(
+        "Select Week",
+        list(range(1, 19))
+    )
+
+else:
+    selected_week = 1
 cursor = connection.cursor()
 
 cursor.execute(
@@ -3777,14 +3873,14 @@ cursor.execute(
 
 games = cursor.fetchall()
 
-if "selected_game" not in st.session_state:
-    st.session_state["selected_game"] = None
-
 # -------------------------
 # GAME DETAIL PAGE
 # -------------------------
 
-if st.session_state["selected_game"]:
+if (
+    st.session_state["page"] == "game"
+    and st.session_state["selected_game"]
+):
 
     selected_game_id = st.session_state["selected_game"]
 
@@ -4672,6 +4768,7 @@ if st.session_state["selected_game"]:
 
     if st.button("← Back to Schedule"):
         st.session_state["selected_game"] = None
+        st.session_state["page"] = "schedule"
         st.rerun()
 
     st.title(f"{away_team} at {home_team}")
@@ -6418,71 +6515,222 @@ if st.session_state["selected_game"]:
     st.stop()
 
 # -------------------------
+# POWER RANKINGS PAGE
+# -------------------------
+
+if st.session_state["page"] == "power_rankings":
+
+    st.title(f"NFL {DISPLAY_SEASON} Power Rankings")
+
+    ranking_week = st.selectbox(
+        "Rankings entering Week",
+        list(range(1, 19)),
+        key="power_ranking_week"
+    )
+
+    cursor.execute(
+        """
+        SELECT MIN(game_date)
+        FROM nfl_games
+        WHERE season = %s
+          AND week = %s;
+        """,
+        (
+            DISPLAY_SEASON,
+            ranking_week
+        )
+    )
+
+    ranking_cutoff_date = cursor.fetchone()[0]
+
+    if ranking_cutoff_date is None:
+        st.info(
+            "No games were found for this week."
+        )
+
+    else:
+        league_power_rankings = get_league_power_rankings(
+            cursor,
+            DISPLAY_SEASON,
+            ranking_cutoff_date
+        )
+
+        st.caption(
+            f"Ratings entering Week {ranking_week}. "
+            "Only games played before this week are included."
+        )
+
+        st.caption(
+            "0.00 represents league-average performance. "
+            "Positive ratings indicate above-average performance; "
+            "negative ratings indicate below-average performance."
+        )
+
+        if not league_power_rankings:
+            st.info(
+                "Power rankings are not available yet. "
+                "Teams must complete games before receiving a rating."
+            )
+
+        else:
+            ranking_rows = []
+
+            for team in league_power_rankings:
+
+                cursor.execute(
+                    """
+                    SELECT team_id
+                    FROM (
+                        SELECT
+                            home_team_id AS team_id,
+                            home_team AS team_name
+                        FROM nfl_games
+                        WHERE season = %s
+
+                        UNION
+
+                        SELECT
+                            away_team_id AS team_id,
+                            away_team AS team_name
+                        FROM nfl_games
+                        WHERE season = %s
+                    ) teams
+                    WHERE team_name = %s
+                    LIMIT 1;
+                    """,
+                    (
+                        DISPLAY_SEASON,
+                        DISPLAY_SEASON,
+                        team["team"]
+                    )
+                )
+
+                team_id_row = cursor.fetchone()
+
+                team_record = "—"
+
+                if team_id_row:
+                    team_record = get_team_record_before_date(
+                        cursor,
+                        team_id_row[0],
+                        DISPLAY_SEASON,
+                        ranking_cutoff_date
+                    )
+
+                ranking_rows.append(
+                    {
+                        "Rank": team["rank"],
+                        "Team": team["team"],
+                        "Record": team_record,
+                        "Power Rating": team["rating"]
+                    }
+                )
+
+            rankings_df = pd.DataFrame(
+                ranking_rows
+            )
+
+            st.dataframe(
+                rankings_df,
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "Rank": st.column_config.NumberColumn(
+                        "Rank",
+                        format="#%d",
+                        width="small"
+                    ),
+                    "Team": st.column_config.TextColumn(
+                        "Team",
+                        width="large"
+                    ),
+                    "Record": st.column_config.TextColumn(
+                        "Record",
+                        width="small"
+                    ),
+                    "Power Rating": st.column_config.NumberColumn(
+                        "Power Rating",
+                        format="%+.2f",
+                        width="medium"
+                    )
+                }
+            )
+
+    st.stop()
+
+# -------------------------
 # SCHEDULE PAGE
 # -------------------------
 
-st.subheader(f"Week {selected_week}")
-st.write(f"{len(games)} games")
+if st.session_state["page"] == "schedule":
 
-for game in games:
+    st.subheader(f"Week {selected_week}")
+    st.write(f"{len(games)} games")
 
-    (
-        game_id,
-        game_date,
-        away_team,
-        home_team,
-        away_team_id,
-        home_team_id,
-        away_logo,
-        home_logo,
-        away_record,
-        home_record,
-        away_home_record,
-        away_road_record,
-        home_home_record,
-        home_road_record,
-        venue,
-        venue_type,
-        away_conference,
-        away_division_record,
-        away_conference_record,
-        away_streak,
-        home_conference,
-        home_division_record,
-        home_conference_record,
-        home_streak
-    ) = game
+    for game in games:
+        (
+            game_id,
+            game_date,
+            away_team,
+            home_team,
+            away_team_id,
+            home_team_id,
+            away_logo,
+            home_logo,
+            away_record,
+            home_record,
+            away_home_record,
+            away_road_record,
+            home_home_record,
+            home_road_record,
+            venue,
+            venue_type,
+            away_conference,
+            away_division_record,
+            away_conference_record,
+            away_streak,
+            home_conference,
+            home_division_record,
+            home_conference_record,
+            home_streak
+        ) = game
 
-    eastern_time = game_date.astimezone(
-        ZoneInfo("America/New_York")
-    )
-
-    with st.container(border=True):
-
-        away_col, middle_col, home_col = st.columns([2, 1, 2])
-
-        with away_col:
-            st.image(away_logo, width=80)
-            st.markdown(f"### {away_team}")
-
-        with middle_col:
-            st.markdown("### @")
-
-        with home_col:
-            st.image(home_logo, width=80)
-            st.markdown(f"### {home_team}")
-
-        st.write(
-            eastern_time.strftime(
-                "%A, %B %d · %I:%M %p %Z"
-            )
+        eastern_time = game_date.astimezone(
+            ZoneInfo("America/New_York")
         )
 
-        st.write(venue)
+        with st.container(border=True):
 
-        if st.button("View Game", key=game_id):
-            st.session_state["selected_game"] = game_id
-            st.rerun()
+            away_col, middle_col, home_col = st.columns(
+                [2, 1, 2]
+            )
+
+            with away_col:
+                st.image(away_logo, width=80)
+                st.markdown(f"### {away_team}")
+
+            with middle_col:
+                st.markdown("### @")
+
+            with home_col:
+                st.image(home_logo, width=80)
+                st.markdown(f"### {home_team}")
+
+            st.write(
+                eastern_time.strftime(
+                    "%A, %B %d · %I:%M %p %Z"
+                )
+            )
+
+            st.write(venue)
+
+            if st.button(
+                "View Game",
+                key=f"view_{game_id}"
+            ):
+                st.session_state["selected_game"] = game_id
+                st.session_state["page"] = "game"
+                st.rerun()
 
 cursor.close()
 connection.close()
