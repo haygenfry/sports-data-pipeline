@@ -1,5 +1,11 @@
 import csv
+import math
 import psycopg2
+
+from sklearn.metrics import (
+    brier_score_loss,
+    log_loss
+)
 
 
 BACKTEST_SEASONS = [2022, 2023, 2024, 2025]
@@ -532,6 +538,89 @@ def get_team_power_rating(
         "red_zone_component": red_zone_component
     }
 
+def get_opponent_strength_adjustment(
+    cursor,
+    team_id,
+    season,
+    game_date
+):
+    cursor.execute(
+        """
+        SELECT
+            CASE
+                WHEN home_team_id = %s
+                    THEN away_team_id
+                ELSE home_team_id
+            END AS opponent_team_id,
+            game_date
+        FROM nfl_games
+        WHERE season = %s
+          AND completed = TRUE
+          AND game_date < %s
+          AND (
+              home_team_id = %s
+              OR away_team_id = %s
+          )
+        ORDER BY game_date;
+        """,
+        (
+            team_id,
+            season,
+            game_date,
+            team_id,
+            team_id
+        )
+    )
+
+    previous_games = cursor.fetchall()
+
+    if not previous_games:
+        return 0.0
+
+    opponent_ratings = []
+
+    for opponent_team_id, opponent_game_date in previous_games:
+
+        opponent_scoring = get_team_scoring_profile(
+            cursor,
+            opponent_team_id,
+            season,
+            opponent_game_date
+        )
+
+        opponent_offense = get_team_boxscore_profile(
+            cursor,
+            opponent_team_id,
+            season,
+            opponent_game_date
+        )
+
+        opponent_defense = get_team_defensive_profile(
+            cursor,
+            opponent_team_id,
+            season,
+            opponent_game_date
+        )
+
+        opponent_power = get_team_power_rating(
+            opponent_scoring,
+            opponent_offense,
+            opponent_defense
+        )
+
+        if opponent_power:
+            opponent_ratings.append(
+                opponent_power["rating"]
+            )
+
+    if not opponent_ratings:
+        return 0.0
+
+    return (
+        sum(opponent_ratings)
+        / len(opponent_ratings)
+    )
+
 def get_matchup_prediction_adjustment(
     away_edges,
     home_edges
@@ -862,6 +951,43 @@ season_placeholders = ", ".join(
     ["%s"] * len(BACKTEST_SEASONS)
 )
 
+def get_v2_win_probability(
+    power_edge,
+    matchup_edge,
+    recent_form_edge
+):
+    if (
+        power_edge is None
+        or matchup_edge is None
+        or recent_form_edge is None
+    ):
+        return None
+
+    intercept = 0.220707
+
+    power_coefficient = 0.059819
+    matchup_coefficient = 0.129711
+    recent_form_coefficient = 0.165316
+
+    logit = (
+        intercept
+        + power_coefficient * power_edge
+        + matchup_coefficient * matchup_edge
+        + recent_form_coefficient * recent_form_edge
+    )
+
+    home_probability = (
+        1
+        / (1 + math.exp(-logit))
+    )
+
+    away_probability = 1 - home_probability
+
+    return {
+        "home_win_probability": home_probability,
+        "away_win_probability": away_probability
+    }
+
 cursor.execute(
     f"""
     SELECT
@@ -1129,6 +1255,33 @@ for index, game in enumerate(
     )
 
     # -------------------------
+    # OPPONENT STRENGTH
+    # -------------------------
+
+    away_opponent_strength = (
+        get_opponent_strength_adjustment(
+            cursor,
+            away_team_id,
+            season,
+            game_date
+        )
+    )
+
+    home_opponent_strength = (
+        get_opponent_strength_adjustment(
+            cursor,
+            home_team_id,
+            season,
+            game_date
+        )
+    )
+
+    opponent_strength_edge = (
+        home_opponent_strength
+        - away_opponent_strength
+    )
+
+    # -------------------------
     # MATCHUP
     # -------------------------
 
@@ -1203,7 +1356,7 @@ for index, game in enumerate(
     )
 
     # -------------------------
-    # RAW MODEL
+    # PREDICTION FEATURES
     # -------------------------
 
     prediction = get_raw_prediction_edge(
@@ -1216,15 +1369,29 @@ for index, game in enumerate(
     if not prediction:
         continue
 
+    v2_prediction = get_v2_win_probability(
+        prediction["power_edge"],
+        prediction["matchup_edge"],
+        prediction["recent_form_edge"]
+    )
+
+    if not v2_prediction:
+        continue
+
     raw_edge = prediction["raw_edge"]
 
-    # Positive = model favors home.
-    # Negative = model favors away.
+    home_win_probability = (
+        v2_prediction["home_win_probability"]
+    )
 
-    if raw_edge > 0:
+    away_win_probability = (
+        v2_prediction["away_win_probability"]
+    )
+
+    if home_win_probability > away_win_probability:
         predicted_winner = home_team
 
-    elif raw_edge < 0:
+    elif away_win_probability > home_win_probability:
         predicted_winner = away_team
 
     else:
@@ -1263,6 +1430,33 @@ for index, game in enumerate(
             "away_score": away_score,
             "home_score": home_score,
 
+            "scoring_edge": (
+                home_power["scoring_component"]
+                - away_power["scoring_component"]
+            ),
+
+            "yards_per_play_edge": (
+                home_power["yards_per_play_component"]
+                - away_power["yards_per_play_component"]
+            ),
+
+            "turnover_edge": (
+                home_power["turnover_component"]
+                - away_power["turnover_component"]
+            ),
+
+            "third_down_edge": (
+                home_power["third_down_component"]
+                - away_power["third_down_component"]
+            ),
+
+            "red_zone_edge": (
+                home_power["red_zone_component"]
+                - away_power["red_zone_component"]
+            ),
+
+            "opponent_strength_edge": opponent_strength_edge,
+
             "power_edge": prediction[
                 "power_edge"
             ],
@@ -1276,6 +1470,8 @@ for index, game in enumerate(
                 "recent_form_edge"
             ],
             "raw_edge": raw_edge,
+            "home_win_probability": home_win_probability,
+            "away_win_probability": away_win_probability,
 
             "predicted_winner": predicted_winner,
             "actual_winner": actual_winner,
@@ -1366,36 +1562,113 @@ if non_ties:
             f"({season_accuracy * 100:.1f}%)"
         )
 
-buckets = [
+confidence_buckets = [
     (
-        "0–2",
-        lambda edge: 0 < abs(edge) <= 2
+        "50–55%",
+        lambda confidence: 0.50 <= confidence < 0.55
     ),
     (
-        "2–5",
-        lambda edge: 2 < abs(edge) <= 5
+        "55–60%",
+        lambda confidence: 0.55 <= confidence < 0.60
     ),
     (
-        "5–10",
-        lambda edge: 5 < abs(edge) <= 10
+        "60–70%",
+        lambda confidence: 0.60 <= confidence < 0.70
     ),
     (
-        "10+",
-        lambda edge: abs(edge) > 10
+        "70–80%",
+        lambda confidence: 0.70 <= confidence < 0.80
+    ),
+    (
+        "80%+",
+        lambda confidence: confidence >= 0.80
     )
 ]
 
 
-print("\nEDGE STRENGTH")
-print("-------------")
+# -------------------------
+# V2 PROBABILITY PERFORMANCE
+# -------------------------
 
-for name, condition in buckets:
+print("\nV2 PERFORMANCE BY SEASON")
+print("------------------------")
 
-    bucket_games = [
+for backtest_season in BACKTEST_SEASONS:
+
+    season_games = [
         row
         for row in non_ties
-        if condition(row["raw_edge"])
+        if row["season"] == backtest_season
     ]
+
+    if not season_games:
+        continue
+
+    outcomes = [
+        row["actual_home_win"]
+        for row in season_games
+    ]
+
+    probabilities = [
+        row["home_win_probability"]
+        for row in season_games
+    ]
+
+    season_correct = sum(
+        1
+        for row in season_games
+        if row["correct"]
+    )
+
+    accuracy = (
+        season_correct
+        / len(season_games)
+    )
+
+    brier = brier_score_loss(
+        outcomes,
+        probabilities
+    )
+
+    loss = log_loss(
+        outcomes,
+        probabilities
+    )
+
+    print(f"\n{backtest_season}")
+
+    print(
+        f"Accuracy: "
+        f"{accuracy * 100:.1f}%"
+    )
+
+    print(
+        f"Brier:    "
+        f"{brier:.4f}"
+    )
+
+    print(
+        f"Log loss: "
+        f"{loss:.4f}"
+    )
+
+
+print("\nV2 CONFIDENCE")
+print("-------------")
+
+for name, condition in confidence_buckets:
+
+    bucket_games = []
+
+    for row in non_ties:
+
+        confidence = max(
+            row["home_win_probability"],
+            row["away_win_probability"]
+        )
+
+        if condition(confidence):
+            bucket_games.append(row)
 
     if not bucket_games:
         continue

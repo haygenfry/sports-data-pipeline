@@ -4,7 +4,7 @@ import pandas as pd
 import math
 from zoneinfo import ZoneInfo
 
-DISPLAY_SEASON = 2025
+DISPLAY_SEASON = 2026
 
 TEAM_ABBREVIATIONS = {
     "Arizona Cardinals": "ARI",
@@ -3599,18 +3599,29 @@ def get_recent_form_adjustment(
 
     return recent_form_adjustment
 
-def calibrate_win_probability(
-    raw_edge
+def get_v2_win_probability(
+    power_edge,
+    matchup_edge,
+    recent_form_edge
 ):
-    if raw_edge is None:
+    if (
+        power_edge is None
+        or matchup_edge is None
+        or recent_form_edge is None
+    ):
         return None
 
-    intercept = 0.103458
-    coefficient = 0.076407
+    intercept = 0.220707
+
+    power_coefficient = 0.059819
+    matchup_coefficient = 0.129711
+    recent_form_coefficient = 0.165316
 
     logit = (
         intercept
-        + coefficient * raw_edge
+        + power_coefficient * power_edge
+        + matchup_coefficient * matchup_edge
+        + recent_form_coefficient * recent_form_edge
     )
 
     home_probability = (
@@ -4161,8 +4172,16 @@ if (
         recent_form_adjustment
     )
 
-    game_prediction = calibrate_win_probability(
-        raw_prediction_edge["raw_edge"]
+    game_prediction = get_v2_win_probability(
+        raw_prediction_edge["power_edge"]
+        if raw_prediction_edge
+        else None,
+
+        raw_prediction_edge["matchup_edge"]
+        if raw_prediction_edge
+        else None,
+
+        raw_prediction_edge["recent_form_edge"]
         if raw_prediction_edge
         else None
     )
@@ -4935,47 +4954,42 @@ if (
 
         st.subheader("Prediction Breakdown")
 
-        breakdown_rows = []
+        breakdown_rows = [
+            {
+                "Component": "Power Rating Edge",
+                "Input": raw_prediction_edge["power_edge"]
+            },
+            {
+                "Component": "Matchup Edge",
+                "Input": raw_prediction_edge["matchup_edge"]
+            },
+            {
+                "Component": "Recent Form Edge",
+                "Input": raw_prediction_edge["recent_form_edge"]
+            }
+        ]
 
-        if raw_prediction_edge:
-            breakdown_rows = [
-                {
-                    "Component": "Power Rating",
-                    "Adjustment": raw_prediction_edge["power_edge"]
-                },
-                {
-                    "Component": "Home Field",
-                    "Adjustment": raw_prediction_edge["home_field_edge"]
-                },
-                {
-                    "Component": "Matchup",
-                    "Adjustment": raw_prediction_edge["matchup_edge"]
-                },
-                {
-                    "Component": "Recent Form",
-                    "Adjustment": raw_prediction_edge["recent_form_edge"]
-                }
-            ]
+        breakdown_df = pd.DataFrame(
+            breakdown_rows
+        )
 
-            breakdown_df = pd.DataFrame(
-                breakdown_rows
-            )
+        breakdown_df["Input"] = (
+            breakdown_df["Input"]
+            .map(lambda value: f"{value:+.2f}")
+        )
 
-            breakdown_df["Adjustment"] = (
-                breakdown_df["Adjustment"]
-                .map(lambda value: f"{value:+.2f}")
-            )
+        st.dataframe(
+            breakdown_df,
+            hide_index=True,
+            use_container_width=True
+        )
 
-            st.dataframe(
-                breakdown_df,
-                hide_index=True,
-                use_container_width=True
-            )
-
-            st.caption(
-                f"Positive adjustments favor {home_team}. "
-                f"Negative adjustments favor {away_team}."
-            )
+        st.caption(
+            f"Positive values favor {home_team}; "
+            f"negative values favor {away_team}. "
+            "V2 combines these inputs using weights learned "
+            "from historical games."
+        )
 
         st.divider()
 
