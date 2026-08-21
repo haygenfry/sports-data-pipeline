@@ -8,7 +8,7 @@ from sklearn.metrics import (
 )
 
 
-INPUT_FILE = "2025_prediction_backtest.csv"
+INPUT_FILE = "multi_season_prediction_backtest.csv"
 
 
 # -------------------------
@@ -17,14 +17,13 @@ INPUT_FILE = "2025_prediction_backtest.csv"
 
 raw_edges = []
 outcomes = []
-
+seasons = []
 
 with open(INPUT_FILE, "r") as file:
     reader = csv.DictReader(file)
 
     for row in reader:
 
-        # Ignore ties
         if row["actual_home_win"] in ("", "None"):
             continue
 
@@ -36,6 +35,9 @@ with open(INPUT_FILE, "r") as file:
             int(row["actual_home_win"])
         )
 
+        seasons.append(
+            int(row["season"])
+        )
 
 print(f"Loaded {len(raw_edges)} historical games")
 
@@ -152,60 +154,71 @@ for edge, probability in zip(
         f"{probability * 100:5.1f}%"
     )
 
-    # -------------------------
-# CHRONOLOGICAL TEST
+# -------------------------
+# 2025 SEASON HOLDOUT
 # -------------------------
 
-split_index = int(
-    len(raw_edges) * 0.70
-)
+train_edges = []
+train_outcomes = []
 
-train_edges = raw_edges[:split_index]
-train_outcomes = outcomes[:split_index]
-
-test_edges = raw_edges[split_index:]
-test_outcomes = outcomes[split_index:]
+holdout_edges = []
+holdout_outcomes = []
 
 
-test_model = LogisticRegression()
+for edge, outcome, season in zip(
+    raw_edges,
+    outcomes,
+    seasons
+):
 
-test_model.fit(
+    if season == 2025:
+        holdout_edges.append(edge)
+        holdout_outcomes.append(outcome)
+
+    else:
+        train_edges.append(edge)
+        train_outcomes.append(outcome)
+
+
+holdout_model = LogisticRegression()
+
+holdout_model.fit(
     train_edges,
     train_outcomes
 )
 
 
-test_probabilities = (
-    test_model.predict_proba(
-        test_edges
+holdout_probabilities = (
+    holdout_model.predict_proba(
+        holdout_edges
     )[:, 1]
 )
 
-test_predictions = (
-    test_model.predict(
-        test_edges
+holdout_predictions = (
+    holdout_model.predict(
+        holdout_edges
     )
 )
 
 
-test_accuracy = accuracy_score(
-    test_outcomes,
-    test_predictions
+holdout_accuracy = accuracy_score(
+    holdout_outcomes,
+    holdout_predictions
 )
 
-test_brier = brier_score_loss(
-    test_outcomes,
-    test_probabilities
+holdout_brier = brier_score_loss(
+    holdout_outcomes,
+    holdout_probabilities
 )
 
-test_log_loss = log_loss(
-    test_outcomes,
-    test_probabilities
+holdout_log_loss = log_loss(
+    holdout_outcomes,
+    holdout_probabilities
 )
 
 
-print("\nCHRONOLOGICAL TRAIN / TEST")
-print("--------------------------")
+print("\n2025 SEASON HOLDOUT")
+print("-------------------")
 
 print(
     f"Training games: "
@@ -213,31 +226,159 @@ print(
 )
 
 print(
-    f"Test games:     "
-    f"{len(test_edges)}"
+    f"2025 test games: "
+    f"{len(holdout_edges)}"
 )
 
 print(
-    f"Test accuracy:  "
-    f"{test_accuracy * 100:.1f}%"
+    f"Test accuracy:   "
+    f"{holdout_accuracy * 100:.1f}%"
 )
 
 print(
-    f"Test Brier:     "
-    f"{test_brier:.4f}"
+    f"Test Brier:      "
+    f"{holdout_brier:.4f}"
 )
 
 print(
-    f"Test log loss:  "
-    f"{test_log_loss:.4f}"
+    f"Test log loss:   "
+    f"{holdout_log_loss:.4f}"
 )
 
 print(
-    f"Train intercept:   "
-    f"{test_model.intercept_[0]:.6f}"
+    f"Train intercept: "
+    f"{holdout_model.intercept_[0]:.6f}"
 )
 
 print(
     f"Train coefficient: "
-    f"{test_model.coef_[0][0]:.6f}"
+    f"{holdout_model.coef_[0][0]:.6f}"
 )
+
+# -------------------------
+# ROLLING SEASON HOLDOUTS
+# -------------------------
+
+rolling_tests = [
+    {
+        "train_seasons": [2022],
+        "test_season": 2023
+    },
+    {
+        "train_seasons": [2022, 2023],
+        "test_season": 2024
+    },
+    {
+        "train_seasons": [2022, 2023, 2024],
+        "test_season": 2025
+    }
+]
+
+
+print("\nROLLING SEASON HOLDOUTS")
+print("-----------------------")
+
+
+for rolling_test in rolling_tests:
+
+    train_seasons = rolling_test["train_seasons"]
+    test_season = rolling_test["test_season"]
+
+    rolling_train_edges = []
+    rolling_train_outcomes = []
+
+    rolling_test_edges = []
+    rolling_test_outcomes = []
+
+
+    for edge, outcome, season in zip(
+        raw_edges,
+        outcomes,
+        seasons
+    ):
+
+        if season in train_seasons:
+            rolling_train_edges.append(edge)
+            rolling_train_outcomes.append(outcome)
+
+        elif season == test_season:
+            rolling_test_edges.append(edge)
+            rolling_test_outcomes.append(outcome)
+
+
+    rolling_model = LogisticRegression()
+
+    rolling_model.fit(
+        rolling_train_edges,
+        rolling_train_outcomes
+    )
+
+
+    rolling_probabilities = (
+        rolling_model.predict_proba(
+            rolling_test_edges
+        )[:, 1]
+    )
+
+    rolling_predictions = (
+        rolling_model.predict(
+            rolling_test_edges
+        )
+    )
+
+
+    rolling_accuracy = accuracy_score(
+        rolling_test_outcomes,
+        rolling_predictions
+    )
+
+    rolling_brier = brier_score_loss(
+        rolling_test_outcomes,
+        rolling_probabilities
+    )
+
+    rolling_log_loss = log_loss(
+        rolling_test_outcomes,
+        rolling_probabilities
+    )
+
+
+    print(
+        f"\nTrain {train_seasons} "
+        f"→ Test {test_season}"
+    )
+
+    print(
+        f"Training games: "
+        f"{len(rolling_train_edges)}"
+    )
+
+    print(
+        f"Test games:     "
+        f"{len(rolling_test_edges)}"
+    )
+
+    print(
+        f"Accuracy:       "
+        f"{rolling_accuracy * 100:.1f}%"
+    )
+
+    print(
+        f"Brier:          "
+        f"{rolling_brier:.4f}"
+    )
+
+    print(
+        f"Log loss:       "
+        f"{rolling_log_loss:.4f}"
+    )
+
+    print(
+        f"Intercept:      "
+        f"{rolling_model.intercept_[0]:.6f}"
+    )
+
+    print(
+        f"Coefficient:    "
+        f"{rolling_model.coef_[0][0]:.6f}"
+    )

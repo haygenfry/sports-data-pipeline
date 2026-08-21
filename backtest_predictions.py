@@ -2,7 +2,7 @@ import csv
 import psycopg2
 
 
-SEASON = 2025
+BACKTEST_SEASONS = [2022, 2023, 2024, 2025]
 START_WEEK = 1
 
 
@@ -858,9 +858,14 @@ def blend_profile(
 
     return blended
 
+season_placeholders = ", ".join(
+    ["%s"] * len(BACKTEST_SEASONS)
+)
+
 cursor.execute(
-    """
+    f"""
     SELECT
+        season,
         game_id,
         week,
         game_date,
@@ -875,14 +880,14 @@ cursor.execute(
 
     FROM nfl_games
 
-    WHERE season = %s
+    WHERE season IN ({season_placeholders})
       AND completed = TRUE
       AND week >= %s
 
     ORDER BY game_date;
     """,
     (
-        SEASON,
+        *BACKTEST_SEASONS,
         START_WEEK
     )
 )
@@ -890,8 +895,8 @@ cursor.execute(
 games = cursor.fetchall()
 
 print(
-    f"Found {len(games)} completed "
-    f"{SEASON} games from Week {START_WEEK}+"
+    f"Found {len(games)} completed games "
+    f"across {BACKTEST_SEASONS}"
 )
 
 results = []
@@ -902,6 +907,7 @@ for index, game in enumerate(
     start=1
 ):
     (
+        season,
         game_id,
         week,
         game_date,
@@ -916,57 +922,57 @@ for index, game in enumerate(
     ) = game
 
     # -------------------------
-    # CURRENT-SEASON PROFILES
+    # CURRENT-season PROFILES
     # -------------------------
 
     away_scoring = get_team_scoring_profile(
         cursor,
         away_team_id,
-        SEASON,
+        season,
         game_date
     )
 
     home_scoring = get_team_scoring_profile(
         cursor,
         home_team_id,
-        SEASON,
+        season,
         game_date
     )
 
     away_boxscore = get_team_boxscore_profile(
         cursor,
         away_team_id,
-        SEASON,
+        season,
         game_date
     )
 
     home_boxscore = get_team_boxscore_profile(
         cursor,
         home_team_id,
-        SEASON,
+        season,
         game_date
     )
 
     away_defense = get_team_defensive_profile(
         cursor,
         away_team_id,
-        SEASON,
+        season,
         game_date
     )
 
     home_defense = get_team_defensive_profile(
         cursor,
         home_team_id,
-        SEASON,
+        season,
         game_date
     )
 
 
     # -------------------------
-    # PREVIOUS-SEASON PROFILES
+    # PREVIOUS-season PROFILES
     # -------------------------
 
-    previous_season = SEASON - 1
+    previous_season = season - 1
 
     away_previous_scoring = get_team_scoring_profile(
         cursor,
@@ -1012,7 +1018,7 @@ for index, game in enumerate(
 
 
     # -------------------------
-    # SEASON BLEND WEIGHTS
+    # season BLEND WEIGHTS
     # -------------------------
 
     away_current_games = (
@@ -1128,7 +1134,7 @@ for index, game in enumerate(
 
     current_league_baselines = get_league_matchup_baselines(
         cursor,
-        SEASON,
+        season,
         game_date
     )
 
@@ -1246,6 +1252,7 @@ for index, game in enumerate(
 
     results.append(
         {
+            "season": season,
             "game_id": game_id,
             "week": week,
             "game_date": game_date,
@@ -1284,7 +1291,7 @@ for index, game in enumerate(
         f"{'CORRECT' if correct else 'MISS'}"
     )
 
-output_file = "2025_prediction_backtest.csv"
+output_file = "multi_season_prediction_backtest.csv"
 
 if results:
 
@@ -1327,18 +1334,37 @@ if non_ties:
     )
 
     print("\nBACKTEST SUMMARY")
-    print("----------------")
-    print(
-        f"Games tested: {len(non_ties)}"
-    )
-    print(
-        f"Correct winner: "
-        f"{correct_predictions}"
-    )
-    print(
-        f"Accuracy: "
-        f"{accuracy * 100:.1f}%"
-    )
+    print("\nACCURACY BY SEASON")
+    print("------------------")
+
+    for backtest_season in BACKTEST_SEASONS:
+
+        season_games = [
+            row
+            for row in non_ties
+            if row["season"] == backtest_season
+        ]
+
+        if not season_games:
+            continue
+
+        season_correct = sum(
+            1
+            for row in season_games
+            if row["correct"]
+        )
+
+        season_accuracy = (
+            season_correct
+            / len(season_games)
+        )
+
+        print(
+            f"{backtest_season}: "
+            f"{season_correct}/"
+            f"{len(season_games)} "
+            f"({season_accuracy * 100:.1f}%)"
+        )
 
 buckets = [
     (

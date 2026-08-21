@@ -3471,8 +3471,8 @@ def calibrate_win_probability(
     if raw_edge is None:
         return None
 
-    intercept = 0.065562
-    coefficient = 0.095543
+    intercept = 0.103458
+    coefficient = 0.076407
 
     logit = (
         intercept
