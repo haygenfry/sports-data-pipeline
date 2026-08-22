@@ -4234,6 +4234,11 @@ cursor.execute(
         g.home_road_record,
         g.venue,
         g.venue_type,
+        g.away_score,
+        g.home_score,
+        g.game_state,
+        g.game_status,
+        g.completed,
 
         away_standings.conference,
         away_standings.division_record,
@@ -4305,6 +4310,11 @@ if (
         home_road_record,
         venue,
         venue_type,
+        away_score,
+        home_score,
+        game_state,
+        game_status,
+        completed,
         away_conference,
         away_division_record,
         away_conference_record,
@@ -5170,11 +5180,39 @@ if (
 
     st.title(f"{away_team} at {home_team}")
 
-    away_col, middle_col, home_col = st.columns([2, 1, 2])
+    # -------------------------
+    # GAME STATUS
+    # -------------------------
+
+    if game_status == "Canceled":
+        st.caption("CANCELED")
+
+    elif game_state == "in":
+        st.caption("LIVE")
+
+    elif completed:
+        st.caption("FINAL")
+
+    else:
+        st.caption("UPCOMING")
+
+
+    # -------------------------
+    # MATCHUP HEADER
+    # -------------------------
+
+    away_col, middle_col, home_col = st.columns(
+        [2, 1, 2]
+    )
 
     with away_col:
         st.image(away_logo, width=120)
         st.subheader(away_team)
+
+        if game_state == "in" or completed:
+            st.markdown(
+                f"# {away_score}"
+            )
 
     with middle_col:
         st.markdown("## @")
@@ -5183,15 +5221,34 @@ if (
         st.image(home_logo, width=120)
         st.subheader(home_team)
 
+        if game_state == "in" or completed:
+            st.markdown(
+                f"# {home_score}"
+            )
+
+
+    # -------------------------
+    # GAME TIME / LIVE STATUS
+    # -------------------------
+
     eastern_time = game_date.astimezone(
         ZoneInfo("America/New_York")
     )
 
-    st.write(
-        eastern_time.strftime(
-            "%A, %B %d · %I:%M %p %Z"
+    if game_status == "Canceled":
+        st.write("Game canceled")
+
+    elif game_state == "in":
+        st.write(
+            game_status or "In Progress"
         )
-    )
+
+    elif not completed:
+        st.write(
+            eastern_time.strftime(
+                "%A, %B %d · %I:%M %p %Z"
+            )
+        )
 
     st.write(venue)
 
@@ -7280,6 +7337,11 @@ if st.session_state["page"] == "schedule":
             home_road_record,
             venue,
             venue_type,
+            away_score,
+            home_score,
+            game_state,
+            game_status,
+            completed,
             away_conference,
             away_division_record,
             away_conference_record,
@@ -7296,6 +7358,26 @@ if st.session_state["page"] == "schedule":
 
         with st.container(border=True):
 
+            # -------------------------
+            # GAME STATUS
+            # -------------------------
+
+            if game_status == "Canceled":
+                st.caption("CANCELED")
+
+            elif game_state == "in":
+                st.caption("LIVE")
+
+            elif completed:
+                st.caption("FINAL")
+
+            else:
+                st.caption("UPCOMING")
+
+            # -------------------------
+            # TEAMS / SCORE
+            # -------------------------
+
             away_col, middle_col, home_col = st.columns(
                 [2, 1, 2]
             )
@@ -7304,6 +7386,11 @@ if st.session_state["page"] == "schedule":
                 st.image(away_logo, width=80)
                 st.markdown(f"### {away_team}")
 
+                if game_state == "in" or completed:
+                    st.markdown(
+                        f"## {away_score}"
+                    )
+
             with middle_col:
                 st.markdown("### @")
 
@@ -7311,11 +7398,37 @@ if st.session_state["page"] == "schedule":
                 st.image(home_logo, width=80)
                 st.markdown(f"### {home_team}")
 
-            st.write(
-                eastern_time.strftime(
-                    "%A, %B %d · %I:%M %p %Z"
+                if game_state == "in" or completed:
+                    st.markdown(
+                        f"## {home_score}"
+                    )
+
+            # -------------------------
+            # DATE / LIVE STATUS
+            # -------------------------
+
+            if game_status == "Canceled":
+                st.write("Game canceled")
+
+            elif game_state == "in":
+                st.write(
+                    game_status or "In Progress"
                 )
-            )
+
+            if game_status == "Canceled":
+                st.write("Game canceled")
+
+            elif game_state == "in":
+                st.write(
+                    game_status or "In Progress"
+                )
+
+            elif not completed:
+                st.write(
+                    eastern_time.strftime(
+                        "%A, %B %d · %I:%M %p %Z"
+                    )
+                )
 
             st.write(venue)
 
