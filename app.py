@@ -4027,17 +4027,28 @@ connection = psycopg2.connect(
 
 
 if "page" not in st.session_state:
-    st.session_state["page"] = "schedule"
+    st.session_state["page"] = "home"
 
 if "selected_game" not in st.session_state:
     st.session_state["selected_game"] = None
 
 
-nav_schedule, nav_power = st.columns(2)
+nav_home, nav_schedule, nav_power = st.columns(3)
+
+with nav_home:
+    if st.button(
+        "Home",
+        key="nav_home",
+        use_container_width=True
+    ):
+        st.session_state["page"] = "home"
+        st.session_state["selected_game"] = None
+        st.rerun()
 
 with nav_schedule:
     if st.button(
         "Schedule",
+        key="nav_schedule",
         use_container_width=True
     ):
         st.session_state["page"] = "schedule"
@@ -4047,16 +4058,146 @@ with nav_schedule:
 with nav_power:
     if st.button(
         "Power Rankings",
+        key="nav_power_rankings",
         use_container_width=True
     ):
         st.session_state["page"] = "power_rankings"
         st.session_state["selected_game"] = None
         st.rerun()
 
-
 if "selected_week" not in st.session_state:
     st.session_state["selected_week"] = 1
 
+# -------------------------
+# HOME PAGE
+# -------------------------
+
+if st.session_state["page"] == "home":
+
+    st.title("NFL Dashboard")
+
+    st.caption(
+        "Game predictions, matchup analysis, power ratings, "
+        "player spotlights, betting markets, and live NFL data."
+    )
+
+    st.divider()
+
+    # -------------------------
+    # QUICK ACCESS
+    # -------------------------
+
+    st.subheader("Explore")
+
+    schedule_col, rankings_col = st.columns(2)
+
+    with schedule_col:
+        with st.container(border=True):
+            st.markdown("### Weekly Schedule")
+            st.write(
+                "Browse every matchup by week and open full "
+                "game previews."
+            )
+
+            if st.button(
+                "View Schedule",
+                key="home_schedule",
+                use_container_width=True
+            ):
+                st.session_state["page"] = "schedule"
+                st.rerun()
+
+    with rankings_col:
+        with st.container(border=True):
+            st.markdown("### Power Rankings")
+            st.write(
+                "View league-wide team ratings entering "
+                "each week."
+            )
+
+            if st.button(
+                "View Power Rankings",
+                key="home_power_rankings",
+                use_container_width=True
+            ):
+                st.session_state["page"] = "power_rankings"
+                st.rerun()
+
+    st.divider()
+
+    # -------------------------
+    # MODEL
+    # -------------------------
+
+    st.subheader("Prediction Model")
+
+    model_col, confidence_col, matchup_col = st.columns(3)
+
+    with model_col:
+        st.metric(
+            "2025 Holdout Accuracy",
+            "67.5%"
+        )
+
+    with confidence_col:
+        st.metric(
+            "70–80% Confidence",
+            "72.5%"
+        )
+
+    with matchup_col:
+        st.metric(
+            "Model Version",
+            "V2"
+        )
+
+    st.caption(
+        "V2 was evaluated using rolling season holdouts, with each "
+        "season evaluated using only information available prior to each game."
+    )
+
+    st.divider()
+
+    # -------------------------
+    # FEATURES
+    # -------------------------
+
+    st.subheader("Dashboard Features")
+
+    feature_rows = [
+        {
+            "Feature": "Game Predictions",
+            "Description": "Win probabilities, confidence, and prediction breakdown."
+        },
+        {
+            "Feature": "Matchup Analysis",
+            "Description": "Offense-vs-defense comparisons and matchup advantages."
+        },
+        {
+            "Feature": "Power Ratings",
+            "Description": "Team strength ratings and league-wide rankings."
+        },
+        {
+            "Feature": "Betting Markets",
+            "Description": "Moneylines, spreads, totals, no-vig probabilities, and model edge."
+        },
+        {
+            "Feature": "Player Spotlights",
+            "Description": "Key quarterbacks, skill players, and defensive impact players."
+        },
+        {
+            "Feature": "Injuries & Weather",
+            "Description": "Game-context information for availability and conditions."
+        }
+    ]
+
+    st.dataframe(
+        pd.DataFrame(feature_rows),
+        hide_index=True,
+        use_container_width=True
+    )
+
+    st.stop()
 
 if st.session_state["page"] == "schedule":
 
