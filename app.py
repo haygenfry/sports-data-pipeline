@@ -1035,12 +1035,38 @@ def get_defensive_impact_score(
 def get_key_player_spotlights(
     offensive_map,
     defensive_map,
+    qb_profile,
+    qb_player_id,
     rb_profile,
     rb_player_id,
     receiver_profile_map,
     defensive_profile_map
 ):
     skill_candidates = []
+
+    # -------------------------
+    # QUARTERBACK
+    # -------------------------
+
+    qb_candidate = None
+
+    if qb_player_id and qb_profile:
+
+        qb_starter = next(
+            (
+                player
+                for player in offensive_map.values()
+                if player[2] == qb_player_id
+            ),
+            None
+        )
+
+        if qb_starter:
+            qb_candidate = {
+                "player": qb_starter,
+                "profile": qb_profile,
+                "type": "QB"
+            }
 
     # -------------------------
     # RUNNING BACK
@@ -1157,6 +1183,7 @@ def get_key_player_spotlights(
     )
 
     return {
+        "qb": qb_candidate,
         "skill": top_skill_player,
         "defense": top_defensive_player
     }
@@ -5564,129 +5591,192 @@ if (
                 f"have completed games in the {DISPLAY_SEASON} season."
             )
 
-            away_key_players = get_key_player_spotlights(
-            away_offensive_map,
-            away_defensive_map,
-            away_rb_profile,
-            away_rb[2] if away_rb else None,
-            away_receiver_profile_map,
-            away_defensive_profile_map
-        )
+    away_key_players = get_key_player_spotlights(
+        away_offensive_map,
+        away_defensive_map,
+        away_qb_profile,
+        away_qb[2] if away_qb else None,
+        away_rb_profile,
+        away_rb[2] if away_rb else None,
+        away_receiver_profile_map,
+        away_defensive_profile_map
+    )
 
-        home_key_players = get_key_player_spotlights(
-            home_offensive_map,
-            home_defensive_map,
-            home_rb_profile,
-            home_rb[2] if home_rb else None,
-            home_receiver_profile_map,
-            home_defensive_profile_map
-        )
+    home_key_players = get_key_player_spotlights(
+        home_offensive_map,
+        home_defensive_map,
+        home_qb_profile,
+        home_qb[2] if home_qb else None,
+        home_rb_profile,
+        home_rb[2] if home_rb else None,
+        home_receiver_profile_map,
+        home_defensive_profile_map
+    )
 
     with players_tab:
 
         st.subheader("Key Player Spotlights")
 
-        away_spotlight_col, home_spotlight_col = st.columns(2)
+        has_away_spotlights = any(
+            away_key_players.values()
+        )
 
-        with away_spotlight_col:
-            st.markdown(f"### {away_team}")
+        has_home_spotlights = any(
+            home_key_players.values()
+        )
 
-            if away_qb:
-                st.markdown(f"**QB · {away_qb[3]}**")
+        if not has_away_spotlights and not has_home_spotlights:
+            st.info(
+                "Player spotlights will populate once current-season "
+                "game data is available."
+            )
 
-                if away_qb_profile:
-                    st.write(
-                        f"{away_qb_profile['passing_yards_per_game']:.1f} pass YPG · "
-                        f"{away_qb_profile['passing_touchdowns']} TD · "
-                        f"{away_qb_profile['interceptions']} INT"
+        else:
+            away_spotlight_col, home_spotlight_col = st.columns(2)
+
+            # -------------------------
+            # AWAY TEAM
+            # -------------------------
+
+            with away_spotlight_col:
+                st.markdown(f"### {away_team}")
+
+                # QUARTERBACK
+                if away_key_players["qb"]:
+                    qb = away_key_players["qb"]
+                    player = qb["player"]
+                    profile = qb["profile"]
+
+                    st.markdown(
+                        f"**QB · {player[3]}**"
                     )
 
-            #if away_key_players["skill"]:
-            #    skill = away_key_players["skill"]
-            #    player = skill["player"]
-            #    profile = skill["profile"]
+                    st.write(
+                        f"{profile['passing_yards_per_game']:.1f} pass YPG · "
+                        f"{profile['passing_touchdowns']} Pass TD · "
+                        f"{profile['interceptions']} INT"
+                    )
 
-            #    st.markdown(
-            #        f"**Skill · {player[3]} ({skill['type']})**"
-            #    )
+                    if (
+                        profile["rushing_yards"] > 0
+                        or profile["rushing_touchdowns"] > 0
+                    ):
+                        st.write(
+                            f"{profile['rushing_yards']} Rush YDS · "
+                            f"{profile['rushing_touchdowns']} Rush TD"
+                        )
 
-            #    if skill["type"] == "RB":
-            #        st.write(
-            #            f"{profile['scrimmage_yards'] / profile['games_played']:.1f} "
-            #            f"scrimmage YPG · "
-            #            f"{profile['total_touchdowns']} TD"
-            #        )
-            #    else:
-            #        st.write(
-            #            f"{profile['receiving_yards_per_game']:.1f} rec YPG · "
-            ##            f"{profile['targets']} targets · "
-            #            f"{profile['receiving_touchdowns']} TD"
-            #        )
+                # SKILL PLAYER
+                if away_key_players["skill"]:
+                    skill = away_key_players["skill"]
+                    player = skill["player"]
+                    profile = skill["profile"]
 
- #           if away_key_players["defense"]:
- #               defense = away_key_players["defense"]
- #               player = defense["player"]
- #               profile = defense["profile"]
+                    st.markdown(
+                        f"**Skill · {player[3]} ({skill['type']})**"
+                    )
 
- #               st.markdown(
- #                   f"**Defense · {player[3]} ({defense['type']})**"
- #               )
+                    if skill["type"] == "RB":
+                        st.write(
+                            f"{profile['scrimmage_yards'] / profile['games_played']:.1f} "
+                            f"scrimmage YPG · "
+                            f"{profile['total_touchdowns']} TD"
+                        )
 
-               # st.write(
-               #     f"{profile['sacks']:.1f} sacks · "
-               #     f"{profile['interceptions']} INT · "
-               #     f"{profile['total_tackles']} tackles"
-               # )
+                    else:
+                        st.write(
+                            f"{profile['receiving_yards_per_game']:.1f} rec YPG · "
+                            f"{profile['targets']} targets · "
+                            f"{profile['receiving_touchdowns']} TD"
+                        )
 
-       # with home_spotlight_col:
-      #      st.markdown(f"### {home_team}")
+                # DEFENSE
+                if away_key_players["defense"]:
+                    defense = away_key_players["defense"]
+                    player = defense["player"]
+                    profile = defense["profile"]
 
-      #      if home_qb:
-      #          st.markdown(f"**QB · {home_qb[3]}**")
-#
-       #         if home_qb_profile:
-      #              st.write(
-        #                f"{home_qb_profile['passing_yards_per_game']:.1f} pass YPG · "
-       #                 f"{home_qb_profile['passing_touchdowns']} TD · "
-        #                f"{home_qb_profile['interceptions']} INT"
-        #            )
+                    st.markdown(
+                        f"**Defense · {player[3]} ({defense['type']})**"
+                    )
 
-       #     if home_key_players["skill"]:
-        #        skill = home_key_players["skill"]
-      #          player = skill["player"]
-        #        profile = skill["profile"]
+                    st.write(
+                        f"{profile['sacks']:.1f} sacks · "
+                        f"{profile['interceptions']} INT · "
+                        f"{profile['total_tackles']} tackles"
+                    )
 
-       #         st.markdown(
-         #           f"**Skill · {player[3]} ({skill['type']})**"
-        #        )
+            # -------------------------
+            # HOME TEAM
+            # -------------------------
 
-        #        if skill["type"] == "RB":
-         #           st.write(
-         #               f"{profile['scrimmage_yards'] / profile['games_played']:.1f} "
-           #             f"scrimmage YPG · "
-          #              f"{profile['total_touchdowns']} TD"
-          #          )
-         #       else:
-           #         st.write(
-            #            f"{profile['receiving_yards_per_game']:.1f} rec YPG · "
-           #             f"{profile['targets']} targets · "
-          #              f"{profile['receiving_touchdowns']} TD"
-          #          )
+            with home_spotlight_col:
+                st.markdown(f"### {home_team}")
 
-          #  if home_key_players["defense"]:
-          #      defense = home_key_players["defense"]
-           #     player = defense["player"]
-          #      profile = defense["profile"]
+                # QUARTERBACK
+                if home_key_players["qb"]:
+                    qb = home_key_players["qb"]
+                    player = qb["player"]
+                    profile = qb["profile"]
 
-          #      st.markdown(
-           #         f"**Defense · {player[3]} ({defense['type']})**"
-           #     )
+                    st.markdown(
+                        f"**QB · {player[3]}**"
+                    )
 
-          #      st.write(
-          #          f"{profile['sacks']:.1f} sacks · "
-          #          f"{profile['interceptions']} INT · "
-           #         f"{profile['total_tackles']} tackles"
-           #     )
+                    st.write(
+                        f"{profile['passing_yards_per_game']:.1f} pass YPG · "
+                        f"{profile['passing_touchdowns']} Pass TD · "
+                        f"{profile['interceptions']} INT"
+                    )
+
+                    if (
+                        profile["rushing_yards"] > 0
+                        or profile["rushing_touchdowns"] > 0
+                    ):
+                        st.write(
+                            f"{profile['rushing_yards']} Rush YDS · "
+                            f"{profile['rushing_touchdowns']} Rush TD"
+                        )
+
+                # SKILL PLAYER
+                if home_key_players["skill"]:
+                    skill = home_key_players["skill"]
+                    player = skill["player"]
+                    profile = skill["profile"]
+
+                    st.markdown(
+                        f"**Skill · {player[3]} ({skill['type']})**"
+                    )
+
+                    if skill["type"] == "RB":
+                        st.write(
+                            f"{profile['scrimmage_yards'] / profile['games_played']:.1f} "
+                            f"scrimmage YPG · "
+                            f"{profile['total_touchdowns']} TD"
+                        )
+
+                    else:
+                        st.write(
+                            f"{profile['receiving_yards_per_game']:.1f} rec YPG · "
+                            f"{profile['targets']} targets · "
+                            f"{profile['receiving_touchdowns']} TD"
+                        )
+
+                # DEFENSE
+                if home_key_players["defense"]:
+                    defense = home_key_players["defense"]
+                    player = defense["player"]
+                    profile = defense["profile"]
+
+                    st.markdown(
+                        f"**Defense · {player[3]} ({defense['type']})**"
+                    )
+
+                    st.write(
+                        f"{profile['sacks']:.1f} sacks · "
+                        f"{profile['interceptions']} INT · "
+                        f"{profile['total_tackles']} tackles"
+                    )
 
         st.divider()
 
