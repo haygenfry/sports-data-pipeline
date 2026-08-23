@@ -4,7 +4,7 @@ import pandas as pd
 import math
 from zoneinfo import ZoneInfo
 
-DISPLAY_SEASON = 2025
+DISPLAY_SEASON = 2026
 
 TEAM_ABBREVIATIONS = {
     "Arizona Cardinals": "ARI",
@@ -3971,6 +3971,84 @@ def get_prediction_confidence(probability):
 
     return "Strong"
 
+def render_team_logo(
+    logo_url,
+    size=120
+):
+    st.markdown(
+        f"""
+        <div style="
+            height: {size}px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+        ">
+            <img
+                src="{logo_url}"
+                style="
+                    max-width: {size}px;
+                    max-height: {size}px;
+                    object-fit: contain;
+                "
+            >
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+def render_matchup_team(
+    team_name,
+    logo_url,
+    score=None,
+    logo_size=120
+):
+    score_html = ""
+
+    if score is not None:
+        score_html = (
+            f"<div style='"
+            f"font-size:42px;"
+            f"font-weight:700;"
+            f"line-height:1.1;"
+            f"margin-top:14px;"
+            f"'>"
+            f"{score}"
+            f"</div>"
+        )
+
+    html = (
+        f"<div>"
+        f"<div style='"
+        f"height:{logo_size}px;"
+        f"display:flex;"
+        f"align-items:center;"
+        f"'>"
+        f"<img src='{logo_url}' "
+        f"style='"
+        f"max-width:{logo_size}px;"
+        f"max-height:{logo_size}px;"
+        f"object-fit:contain;"
+        f"'>"
+        f"</div>"
+
+        f"<div style='"
+        f"height:72px;"
+        f"display:flex;"
+        f"align-items:center;"
+        f"font-size:28px;"
+        f"font-weight:700;"
+        f"line-height:1.2;"
+        f"margin-top:12px;"
+        f"'>"
+        f"{team_name}"
+        f"</div>"
+
+        f"{score_html}"
+        f"</div>"
+    )
+
+    st.html(html)
+
 OFFENSIVE_DISPLAY_ORDER = [
     "qb",
     "rb",
@@ -5185,16 +5263,28 @@ if (
     # -------------------------
 
     if game_status == "Canceled":
-        st.caption("CANCELED")
+        st.markdown(
+            "<div style='text-align: center;'>CANCELED</div>",
+            unsafe_allow_html=True
+        )
 
     elif game_state == "in":
-        st.caption("LIVE")
+        st.markdown(
+            "<div style='text-align: center;'>LIVE</div>",
+            unsafe_allow_html=True
+        )
 
     elif completed:
-        st.caption("FINAL")
+        st.markdown(
+            "<div style='text-align: center;'>FINAL</div>",
+            unsafe_allow_html=True
+        )
 
     else:
-        st.caption("UPCOMING")
+        st.markdown(
+            "<div style='text-align: center;'>UPCOMING</div>",
+            unsafe_allow_html=True
+        )
 
 
     # -------------------------
@@ -5206,25 +5296,27 @@ if (
     )
 
     with away_col:
-        st.image(away_logo, width=120)
-        st.subheader(away_team)
-
-        if game_state == "in" or completed:
-            st.markdown(
-                f"# {away_score}"
-            )
+        render_matchup_team(
+            away_team,
+            away_logo,
+            away_score
+            if game_state == "in" or completed
+            else None,
+            logo_size=120
+        )
 
     with middle_col:
         st.markdown("## @")
 
     with home_col:
-        st.image(home_logo, width=120)
-        st.subheader(home_team)
-
-        if game_state == "in" or completed:
-            st.markdown(
-                f"# {home_score}"
-            )
+        render_matchup_team(
+            home_team,
+            home_logo,
+            home_score
+            if game_state == "in" or completed
+            else None,
+            logo_size=120
+        )
 
 
     # -------------------------
@@ -5236,21 +5328,38 @@ if (
     )
 
     if game_status == "Canceled":
-        st.write("Game canceled")
+        st.markdown(
+            "<div style='text-align: center;'>Game canceled</div>",
+            unsafe_allow_html=True
+        )
 
     elif game_state == "in":
-        st.write(
-            game_status or "In Progress"
+        st.markdown(
+            f"<div style='text-align: center;'>"
+            f"{game_status or 'In Progress'}"
+            f"</div>",
+            unsafe_allow_html=True
         )
 
     elif not completed:
-        st.write(
-            eastern_time.strftime(
+        st.markdown(
+            "<div style='text-align: center;'>"
+            + eastern_time.strftime(
                 "%A, %B %d · %I:%M %p %Z"
             )
+            + "</div>",
+            unsafe_allow_html=True
         )
 
-    st.write(venue)
+
+    # -------------------------
+    # VENUE
+    # -------------------------
+
+    st.markdown(
+        f"<div style='text-align: center;'>{venue}</div>",
+        unsafe_allow_html=True
+    )
 
     st.divider()
 
@@ -5313,7 +5422,134 @@ if (
 
     with overview_tab:
         st.subheader("Game Overview")
-        st.write("Prediction and matchup summary coming soon.")
+
+        # -------------------------
+        # PREDICTION SUMMARY
+        # -------------------------
+
+        if game_prediction:
+
+            away_probability = (
+                game_prediction["away_win_probability"]
+                * 100
+            )
+
+            home_probability = (
+                game_prediction["home_win_probability"]
+                * 100
+            )
+
+            if home_probability > away_probability:
+                predicted_team = home_team
+                predicted_probability = home_probability
+            else:
+                predicted_team = away_team
+                predicted_probability = away_probability
+
+            prediction_col, matchup_col = st.columns(2)
+
+            with prediction_col:
+                st.markdown("### Model Prediction")
+                st.metric(
+                    predicted_team,
+                    f"{predicted_probability:.1f}%"
+                )
+
+            with matchup_col:
+                st.markdown("### Matchup Lean")
+
+                if matchup_prediction_adjustment is None:
+                    st.write("Unavailable")
+
+                elif matchup_prediction_adjustment > 0.25:
+                    st.metric(
+                        home_team,
+                        "Home matchup edge"
+                    )
+
+                elif matchup_prediction_adjustment < -0.25:
+                    st.metric(
+                        away_team,
+                        "Away matchup edge"
+                    )
+
+                else:
+                    st.metric(
+                        "Roughly Even",
+                        "Balanced matchup"
+                    )
+
+        else:
+            st.info(
+                "Prediction and matchup summary will populate once "
+                "enough game data is available."
+            )
+
+        st.divider()
+
+        # -------------------------
+        # TEAM CONTEXT
+        # -------------------------
+
+        st.markdown("### Team Context")
+
+        away_context_col, home_context_col = st.columns(2)
+
+        with away_context_col:
+            st.markdown(f"**{away_team}**")
+
+            st.write(
+                f"Record: {away_record}"
+            )
+
+            st.write(
+                f"Last 3: "
+                f"{' - '.join(away_last_three) if away_last_three else 'No games played'}"
+            )
+
+        with home_context_col:
+            st.markdown(f"**{home_team}**")
+
+            st.write(
+                f"Record: {home_record}"
+            )
+
+            st.write(
+                f"Last 3: "
+                f"{' - '.join(home_last_three) if home_last_three else 'No games played'}"
+            )
+
+        st.divider()
+
+        # -------------------------
+        # MARKET SUMMARY
+        # -------------------------
+
+        st.markdown("### Market")
+
+        if (
+            game_betting
+            and game_betting["away_moneyline"] is not None
+            and game_betting["home_moneyline"] is not None
+        ):
+            market_col_1, market_col_2 = st.columns(2)
+
+            with market_col_1:
+                st.metric(
+                    away_team,
+                    f"{int(game_betting['away_moneyline']):+d}"
+                )
+
+            with market_col_2:
+                st.metric(
+                    home_team,
+                    f"{int(game_betting['home_moneyline']):+d}"
+                )
+
+        else:
+            st.write(
+                "Current moneyline market unavailable."
+            )
 
     with prediction_tab:
         st.subheader("Game Prediction")
@@ -7383,25 +7619,28 @@ if st.session_state["page"] == "schedule":
             )
 
             with away_col:
-                st.image(away_logo, width=80)
-                st.markdown(f"### {away_team}")
-
-                if game_state == "in" or completed:
-                    st.markdown(
-                        f"## {away_score}"
-                    )
+                render_matchup_team(
+                    away_team,
+                    away_logo,
+                    away_score
+                    if game_state == "in" or completed
+                    else None,
+                    logo_size=80
+                )
 
             with middle_col:
                 st.markdown("### @")
 
             with home_col:
-                st.image(home_logo, width=80)
-                st.markdown(f"### {home_team}")
+                render_matchup_team(
+                    home_team,
+                    home_logo,
+                    home_score
+                    if game_state == "in" or completed
+                    else None,
+                    logo_size=80
+                )
 
-                if game_state == "in" or completed:
-                    st.markdown(
-                        f"## {home_score}"
-                    )
 
             # -------------------------
             # DATE / LIVE STATUS
