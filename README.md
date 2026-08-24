@@ -169,6 +169,20 @@ pip install -r requirements.txt
 
 The application expects a local PostgreSQL database containing the NFL schedule, team, player, betting, injury, weather, and supporting analytical data.
 
+Create the database:
+
+```bash
+createdb nfl_data
+```
+
+Initialize the database schema:
+
+```bash
+psql -d nfl_data -f schema.sql
+```
+
+The schema defines the PostgreSQL tables, constraints, sequences, and relationships required by the application. After initializing the schema, the ingestion scripts can be used to populate the database with NFL data.
+
 The repository includes ingestion scripts for the major data domains, including:
 
 - `load_historical_games.py`
