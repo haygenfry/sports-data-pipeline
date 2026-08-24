@@ -1,13 +1,7 @@
 import requests
-import psycopg2
+from db import get_connection
 
-connection = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    database="nfl_data",
-    user="nfl_user",
-    password="nfl_password"
-)
+connection = get_connection()
 
 cursor = connection.cursor()
 

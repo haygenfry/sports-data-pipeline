@@ -1,5 +1,5 @@
 import requests
-import psycopg2
+from db import get_connection
 
 url = (
     "https://site.api.espn.com/apis/site/v2/"
@@ -8,13 +8,7 @@ url = (
 
 SEASONS = [2021, 2022, 2023, 2024]
 
-connection = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    database="nfl_data",
-    user="nfl_user",
-    password="nfl_password"
-)
+connection = get_connection()
 
 cursor = connection.cursor()
 

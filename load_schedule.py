@@ -1,6 +1,6 @@
 import requests
 import json
-import psycopg2
+from db import get_connection
 
 url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
 
@@ -138,13 +138,7 @@ for week in range(1, 19):
 with open("2026_schedule.json", "w") as file:
     json.dump(schedule, file, indent=4)
 
-connection = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    database="nfl_data",
-    user="nfl_user",
-    password="nfl_password"
-)
+connection = get_connection()
 
 cursor = connection.cursor()
 

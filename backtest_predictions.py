@@ -1,24 +1,18 @@
 import csv
 import math
-import psycopg2
 
 from sklearn.metrics import (
     brier_score_loss,
     log_loss
 )
+from db import get_connection
 
 
 BACKTEST_SEASONS = [2022, 2023, 2024, 2025]
 START_WEEK = 1
 
 
-connection = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    database="nfl_data",
-    user="nfl_user",
-    password="nfl_password"
-)
+connection = get_connection()
 
 cursor = connection.cursor()
 

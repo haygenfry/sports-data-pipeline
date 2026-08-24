@@ -1,6 +1,6 @@
 import requests
-import psycopg2
 from datetime import datetime, timezone
+from db import get_connection
 
 
 summary_url = (
@@ -8,13 +8,7 @@ summary_url = (
     "sports/football/nfl/summary"
 )
 
-connection = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    database="nfl_data",
-    user="nfl_user",
-    password="nfl_password"
-)
+connection = get_connection()
 
 cursor = connection.cursor()
 
