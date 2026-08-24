@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 import streamlit as st
 import psycopg2
 import pandas as pd
@@ -73,6 +75,8 @@ from data import (
     get_league_power_rankings,
 )
 
+load_dotenv()
+
 
 DISPLAY_SEASON = 2025
 
@@ -111,34 +115,11 @@ TEAM_ABBREVIATIONS = {
     "Washington Commanders": "WAS"
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def build_depth_map(players):
     return {
         (player[0], player[7]): player
         for player in players
     }
-
 
 def get_matchup_depth_rows(
     away_players,
@@ -165,16 +146,6 @@ def get_matchup_depth_rows(
     )
 
     return away_map, home_map, rows
-
-
-
-
-
-
-
-
-
-
 
 def get_matchup_advantage_summary(
     away_team,
@@ -230,36 +201,6 @@ def get_matchup_advantage_summary(
         "home_advantages": home_advantages
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 OFFENSIVE_DISPLAY_ORDER = [
     "qb",
     "rb",
@@ -307,13 +248,12 @@ SPECIAL_TEAMS_DISPLAY_ORDER = [
 ]
 
 connection = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    database="nfl_data",
-    user="nfl_user",
-    password="nfl_password"
+    host=os.environ["DB_HOST"],
+    port=int(os.environ["DB_PORT"]),
+    database=os.environ["DB_NAME"],
+    user=os.environ["DB_USER"],
+    password=os.environ["DB_PASSWORD"]
 )
-
 
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
