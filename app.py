@@ -77,6 +77,13 @@ from data import (
 
 load_dotenv()
 
+LIVE_REFRESH_ENABLED = (
+    os.getenv(
+        "LIVE_REFRESH_ENABLED",
+        "false"
+    ).lower()
+    == "true"
+)
 
 DISPLAY_SEASON = 2025
 
@@ -311,6 +318,17 @@ if st.session_state["page"] == "home":
     )
 
     st.divider()
+
+    if LIVE_REFRESH_ENABLED:
+        st.caption(
+            "Live data refresh enabled."
+        )
+    else:
+        st.caption(
+            "Portfolio preview · Data is shown from the latest available snapshot."
+        )
+
+        st.divider()
 
     # -------------------------
     # QUICK ACCESS

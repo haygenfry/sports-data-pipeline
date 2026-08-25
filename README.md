@@ -68,6 +68,12 @@ The pipeline:
 
 Historical calculations use game dates as temporal cutoffs so that analytics for a given matchup are based only on information available before that game.
 
+### Deployment Mode
+
+The public portfolio deployment initially operates in snapshot mode. The dashboard reads from the same PostgreSQL-backed analytical architecture used during development, but automated production data refresh is disabled.
+
+The ingestion layer is being migrated toward data sources suitable for automated public deployment. Once that migration is complete, scheduled/live refresh can be enabled without redesigning the downstream database, analytics, prediction, or presentation layers.
+
 ## Prediction Model
 
 The game prediction system combines three primary signals:
