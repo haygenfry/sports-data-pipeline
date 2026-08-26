@@ -1,7 +1,7 @@
+from db import get_connection
 import os
 from dotenv import load_dotenv
 import streamlit as st
-import psycopg2
 import pandas as pd
 import math
 from zoneinfo import ZoneInfo
@@ -254,13 +254,7 @@ SPECIAL_TEAMS_DISPLAY_ORDER = [
     "ls"
 ]
 
-connection = psycopg2.connect(
-    host=os.environ["DB_HOST"],
-    port=int(os.environ["DB_PORT"]),
-    database=os.environ["DB_NAME"],
-    user=os.environ["DB_USER"],
-    password=os.environ["DB_PASSWORD"]
-)
+connection = get_connection()
 
 if "page" not in st.session_state:
     st.session_state["page"] = "home"

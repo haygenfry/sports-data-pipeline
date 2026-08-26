@@ -6,3 +6,4 @@ __pycache__/
 2025_schedule.json
 2026_schedule.json
 .env
+nfl_snapshot.sql
