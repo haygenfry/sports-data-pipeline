@@ -618,6 +618,155 @@ def get_qb_profile(cursor, player_id, season, game_date):
         "rushing_touchdowns": rushing_touchdowns
     }
 
+def get_qb_profiles(
+    cursor,
+    player_ids,
+    season,
+    game_date
+):
+    if not player_ids:
+        return {}
+
+    cursor.execute(
+        """
+        SELECT
+            p.player_id,
+            p.completions_attempts,
+            p.passing_yards,
+            p.passing_touchdowns,
+            p.passing_interceptions,
+            p.qbr,
+            p.passer_rating,
+            p.rushing_attempts,
+            p.rushing_yards,
+            p.rushing_touchdowns
+        FROM nfl_player_game_stats p
+        JOIN nfl_games g
+            ON p.game_id = g.game_id
+        WHERE p.player_id = ANY(%s)
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY p.player_id, g.game_date;
+        """,
+        (player_ids, season, game_date)
+    )
+
+    grouped_rows = {}
+
+    for row in cursor.fetchall():
+        grouped_rows.setdefault(
+            row[0],
+            []
+        ).append(row[1:])
+
+    profiles = {}
+
+    for player_id in player_ids:
+        rows = grouped_rows.get(player_id, [])
+
+        if not rows:
+            profiles[player_id] = None
+            continue
+
+        completions = 0
+        attempts = 0
+        passing_yards = 0
+        passing_touchdowns = 0
+        interceptions = 0
+        rushing_attempts = 0
+        rushing_yards = 0
+        rushing_touchdowns = 0
+        qbr_values = []
+        passer_rating_values = []
+
+        for (
+            completions_attempts,
+            game_passing_yards,
+            game_passing_touchdowns,
+            game_interceptions,
+            qbr,
+            passer_rating,
+            game_rushing_attempts,
+            game_rushing_yards,
+            game_rushing_touchdowns
+        ) in rows:
+
+            if completions_attempts:
+                game_completions, game_attempts = (
+                    completions_attempts.split("/")
+                )
+                completions += int(game_completions)
+                attempts += int(game_attempts)
+
+            if game_passing_yards is not None:
+                passing_yards += game_passing_yards
+
+            if game_passing_touchdowns is not None:
+                passing_touchdowns += game_passing_touchdowns
+
+            if game_interceptions is not None:
+                interceptions += game_interceptions
+
+            if qbr is not None:
+                qbr_values.append(float(qbr))
+
+            if passer_rating is not None:
+                passer_rating_values.append(
+                    float(passer_rating)
+                )
+
+            if game_rushing_attempts is not None:
+                rushing_attempts += game_rushing_attempts
+
+            if game_rushing_yards is not None:
+                rushing_yards += game_rushing_yards
+
+            if game_rushing_touchdowns is not None:
+                rushing_touchdowns += (
+                    game_rushing_touchdowns
+                )
+
+        games_played = len(rows)
+
+        profiles[player_id] = {
+            "games_played": games_played,
+            "completions": completions,
+            "attempts": attempts,
+            "completion_pct": (
+                completions / attempts
+                if attempts
+                else 0
+            ),
+            "passing_yards": passing_yards,
+            "passing_yards_per_game": (
+                passing_yards / games_played
+            ),
+            "passing_touchdowns": passing_touchdowns,
+            "interceptions": interceptions,
+            "yards_per_attempt": (
+                passing_yards / attempts
+                if attempts
+                else 0
+            ),
+            "average_qbr": (
+                sum(qbr_values) / len(qbr_values)
+                if qbr_values
+                else None
+            ),
+            "average_passer_rating": (
+                sum(passer_rating_values)
+                / len(passer_rating_values)
+                if passer_rating_values
+                else None
+            ),
+            "rushing_attempts": rushing_attempts,
+            "rushing_yards": rushing_yards,
+            "rushing_touchdowns": rushing_touchdowns
+        }
+
+    return profiles
+
 
 def get_rb_profile(cursor, player_id, season, game_date):
     cursor.execute(
@@ -717,6 +866,130 @@ def get_rb_profile(cursor, player_id, season, game_date):
         )
     }
 
+def get_rb_profiles(
+    cursor,
+    player_ids,
+    season,
+    game_date
+):
+    if not player_ids:
+        return {}
+
+    cursor.execute(
+        """
+        SELECT
+            p.player_id,
+            p.rushing_attempts,
+            p.rushing_yards,
+            p.rushing_touchdowns,
+            p.receptions,
+            p.receiving_yards,
+            p.receiving_touchdowns,
+            p.receiving_targets
+        FROM nfl_player_game_stats p
+        JOIN nfl_games g
+            ON p.game_id = g.game_id
+        WHERE p.player_id = ANY(%s)
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY p.player_id, g.game_date;
+        """,
+        (player_ids, season, game_date)
+    )
+
+    grouped_rows = {}
+
+    for row in cursor.fetchall():
+        grouped_rows.setdefault(
+            row[0],
+            []
+        ).append(row[1:])
+
+    profiles = {}
+
+    for player_id in player_ids:
+        rows = grouped_rows.get(player_id, [])
+
+        if not rows:
+            profiles[player_id] = None
+            continue
+
+        rushing_attempts = 0
+        rushing_yards = 0
+        rushing_touchdowns = 0
+        receptions = 0
+        receiving_yards = 0
+        receiving_touchdowns = 0
+        receiving_targets = 0
+
+        for (
+            game_rushing_attempts,
+            game_rushing_yards,
+            game_rushing_touchdowns,
+            game_receptions,
+            game_receiving_yards,
+            game_receiving_touchdowns,
+            game_receiving_targets
+        ) in rows:
+
+            if game_rushing_attempts is not None:
+                rushing_attempts += game_rushing_attempts
+
+            if game_rushing_yards is not None:
+                rushing_yards += game_rushing_yards
+
+            if game_rushing_touchdowns is not None:
+                rushing_touchdowns += (
+                    game_rushing_touchdowns
+                )
+
+            if game_receptions is not None:
+                receptions += game_receptions
+
+            if game_receiving_yards is not None:
+                receiving_yards += game_receiving_yards
+
+            if game_receiving_touchdowns is not None:
+                receiving_touchdowns += (
+                    game_receiving_touchdowns
+                )
+
+            if game_receiving_targets is not None:
+                receiving_targets += game_receiving_targets
+
+        games_played = len(rows)
+
+        profiles[player_id] = {
+            "games_played": games_played,
+            "rushing_attempts": rushing_attempts,
+            "rushing_yards": rushing_yards,
+            "rushing_yards_per_game": (
+                rushing_yards / games_played
+            ),
+            "yards_per_carry": (
+                rushing_yards / rushing_attempts
+                if rushing_attempts
+                else 0
+            ),
+            "rushing_touchdowns": rushing_touchdowns,
+            "receptions": receptions,
+            "receiving_targets": receiving_targets,
+            "receiving_yards": receiving_yards,
+            "receiving_yards_per_game": (
+                receiving_yards / games_played
+            ),
+            "receiving_touchdowns": receiving_touchdowns,
+            "scrimmage_yards": (
+                rushing_yards + receiving_yards
+            ),
+            "total_touchdowns": (
+                rushing_touchdowns
+                + receiving_touchdowns
+            )
+        }
+
+    return profiles
 
 def get_receiving_profile(cursor, player_id, season, game_date):
     cursor.execute(
@@ -812,6 +1085,137 @@ def get_receiving_profile(cursor, player_id, season, game_date):
         "rushing_touchdowns": rushing_touchdowns
     }
 
+def get_receiving_profiles(
+    cursor,
+    player_ids,
+    season,
+    game_date
+):
+    if not player_ids:
+        return {}
+
+    cursor.execute(
+        """
+        SELECT
+            p.player_id,
+            p.receptions,
+            p.receiving_targets,
+            p.receiving_yards,
+            p.receiving_touchdowns,
+            p.rushing_attempts,
+            p.rushing_yards,
+            p.rushing_touchdowns
+        FROM nfl_player_game_stats p
+        JOIN nfl_games g
+            ON p.game_id = g.game_id
+        WHERE p.player_id = ANY(%s)
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY p.player_id, g.game_date;
+        """,
+        (player_ids, season, game_date)
+    )
+
+    rows = cursor.fetchall()
+
+    grouped_rows = {}
+
+    for row in rows:
+        player_id = row[0]
+        grouped_rows.setdefault(
+            player_id,
+            []
+        ).append(row[1:])
+
+    profiles = {}
+
+    for player_id in player_ids:
+        player_rows = grouped_rows.get(
+            player_id,
+            []
+        )
+
+        if not player_rows:
+            profiles[player_id] = None
+            continue
+
+        receptions = 0
+        targets = 0
+        receiving_yards = 0
+        receiving_touchdowns = 0
+        rushing_attempts = 0
+        rushing_yards = 0
+        rushing_touchdowns = 0
+
+        for (
+            game_receptions,
+            game_targets,
+            game_receiving_yards,
+            game_receiving_touchdowns,
+            game_rushing_attempts,
+            game_rushing_yards,
+            game_rushing_touchdowns
+        ) in player_rows:
+
+            if game_receptions is not None:
+                receptions += game_receptions
+
+            if game_targets is not None:
+                targets += game_targets
+
+            if game_receiving_yards is not None:
+                receiving_yards += game_receiving_yards
+
+            if game_receiving_touchdowns is not None:
+                receiving_touchdowns += (
+                    game_receiving_touchdowns
+                )
+
+            if game_rushing_attempts is not None:
+                rushing_attempts += (
+                    game_rushing_attempts
+                )
+
+            if game_rushing_yards is not None:
+                rushing_yards += game_rushing_yards
+
+            if game_rushing_touchdowns is not None:
+                rushing_touchdowns += (
+                    game_rushing_touchdowns
+                )
+
+        games_played = len(player_rows)
+
+        profiles[player_id] = {
+            "games_played": games_played,
+            "receptions": receptions,
+            "targets": targets,
+            "catch_pct": (
+                receptions / targets
+                if targets
+                else 0
+            ),
+            "receiving_yards": receiving_yards,
+            "receiving_yards_per_game": (
+                receiving_yards / games_played
+            ),
+            "yards_per_reception": (
+                receiving_yards / receptions
+                if receptions
+                else 0
+            ),
+            "receiving_touchdowns": (
+                receiving_touchdowns
+            ),
+            "rushing_attempts": rushing_attempts,
+            "rushing_yards": rushing_yards,
+            "rushing_touchdowns": (
+                rushing_touchdowns
+            )
+        }
+
+    return profiles
 
 def get_defensive_player_profile(
     cursor,
@@ -924,6 +1328,154 @@ def get_defensive_player_profile(
         "fumbles_recovered": fumbles_recovered
     }
 
+def get_defensive_player_profiles(
+    cursor,
+    player_ids,
+    season,
+    game_date
+):
+    if not player_ids:
+        return {}
+
+    cursor.execute(
+        """
+        SELECT
+            p.player_id,
+            p.total_tackles,
+            p.solo_tackles,
+            p.sacks,
+            p.tackles_for_loss,
+            p.passes_defended,
+            p.qb_hits,
+            p.defensive_touchdowns,
+            p.defensive_interceptions,
+            p.interception_yards,
+            p.interception_touchdowns,
+            p.fumbles_recovered
+        FROM nfl_player_game_stats p
+        JOIN nfl_games g
+            ON p.game_id = g.game_id
+        WHERE p.player_id = ANY(%s)
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY p.player_id, g.game_date;
+        """,
+        (player_ids, season, game_date)
+    )
+
+    rows = cursor.fetchall()
+
+    grouped_rows = {}
+
+    for row in rows:
+        player_id = row[0]
+
+        grouped_rows.setdefault(
+            player_id,
+            []
+        ).append(row[1:])
+
+    profiles = {}
+
+    for player_id in player_ids:
+
+        player_rows = grouped_rows.get(
+            player_id,
+            []
+        )
+
+        if not player_rows:
+            profiles[player_id] = None
+            continue
+
+        total_tackles = 0
+        solo_tackles = 0
+        sacks = 0
+        tackles_for_loss = 0
+        passes_defended = 0
+        qb_hits = 0
+        defensive_touchdowns = 0
+        interceptions = 0
+        interception_yards = 0
+        interception_touchdowns = 0
+        fumbles_recovered = 0
+
+        for (
+            game_total_tackles,
+            game_solo_tackles,
+            game_sacks,
+            game_tackles_for_loss,
+            game_passes_defended,
+            game_qb_hits,
+            game_defensive_touchdowns,
+            game_interceptions,
+            game_interception_yards,
+            game_interception_touchdowns,
+            game_fumbles_recovered
+        ) in player_rows:
+
+            if game_total_tackles is not None:
+                total_tackles += game_total_tackles
+
+            if game_solo_tackles is not None:
+                solo_tackles += game_solo_tackles
+
+            if game_sacks is not None:
+                sacks += float(game_sacks)
+
+            if game_tackles_for_loss is not None:
+                tackles_for_loss += float(
+                    game_tackles_for_loss
+                )
+
+            if game_passes_defended is not None:
+                passes_defended += game_passes_defended
+
+            if game_qb_hits is not None:
+                qb_hits += game_qb_hits
+
+            if game_defensive_touchdowns is not None:
+                defensive_touchdowns += (
+                    game_defensive_touchdowns
+                )
+
+            if game_interceptions is not None:
+                interceptions += game_interceptions
+
+            if game_interception_yards is not None:
+                interception_yards += (
+                    game_interception_yards
+                )
+
+            if game_interception_touchdowns is not None:
+                interception_touchdowns += (
+                    game_interception_touchdowns
+                )
+
+            if game_fumbles_recovered is not None:
+                fumbles_recovered += (
+                    game_fumbles_recovered
+                )
+
+        profiles[player_id] = {
+            "games_played": len(player_rows),
+            "total_tackles": total_tackles,
+            "solo_tackles": solo_tackles,
+            "sacks": sacks,
+            "tackles_for_loss": tackles_for_loss,
+            "passes_defended": passes_defended,
+            "qb_hits": qb_hits,
+            "defensive_touchdowns": defensive_touchdowns,
+            "interceptions": interceptions,
+            "interception_yards": interception_yards,
+            "interception_touchdowns": (
+                interception_touchdowns
+            ),
+            "fumbles_recovered": fumbles_recovered
+        }
+
+    return profiles
 
 def get_special_teams_profile(
     cursor,
@@ -1135,6 +1687,239 @@ def get_special_teams_profile(
         "long_punt": long_punt
     }
 
+def get_special_teams_profiles(
+    cursor,
+    player_ids,
+    season,
+    game_date
+):
+    if not player_ids:
+        return {}
+
+    cursor.execute(
+        """
+        SELECT
+            p.player_id,
+            p.kick_returns,
+            p.kick_return_yards,
+            p.yards_per_kick_return,
+            p.long_kick_return,
+            p.kick_return_touchdowns,
+            p.punt_returns,
+            p.punt_return_yards,
+            p.yards_per_punt_return,
+            p.long_punt_return,
+            p.punt_return_touchdowns,
+            p.field_goals_made_attempted,
+            p.field_goal_pct,
+            p.long_field_goal_made,
+            p.extra_points_made_attempted,
+            p.total_kicking_points,
+            p.punts,
+            p.punt_yards,
+            p.gross_avg_punt_yards,
+            p.touchbacks,
+            p.punts_inside_20,
+            p.long_punt
+        FROM nfl_player_game_stats p
+        JOIN nfl_games g
+            ON p.game_id = g.game_id
+        WHERE p.player_id = ANY(%s)
+          AND g.season = %s
+          AND g.completed = TRUE
+          AND g.game_date < %s
+        ORDER BY p.player_id, g.game_date;
+        """,
+        (player_ids, season, game_date)
+    )
+
+    grouped_rows = {}
+
+    for row in cursor.fetchall():
+        grouped_rows.setdefault(
+            row[0],
+            []
+        ).append(row[1:])
+
+    profiles = {}
+
+    for player_id in player_ids:
+        rows = grouped_rows.get(player_id, [])
+
+        if not rows:
+            profiles[player_id] = None
+            continue
+
+        kick_returns = 0
+        kick_return_yards = 0
+        kick_return_touchdowns = 0
+        long_kick_return = None
+
+        punt_returns = 0
+        punt_return_yards = 0
+        punt_return_touchdowns = 0
+        long_punt_return = None
+
+        field_goals_made = 0
+        field_goal_attempts = 0
+        long_field_goal_made = None
+
+        extra_points_made = 0
+        extra_point_attempts = 0
+        total_kicking_points = 0
+
+        punts = 0
+        punt_yards = 0
+        touchbacks = 0
+        punts_inside_20 = 0
+        long_punt = None
+
+        for (
+            game_kick_returns,
+            game_kick_return_yards,
+            game_yards_per_kick_return,
+            game_long_kick_return,
+            game_kick_return_touchdowns,
+            game_punt_returns,
+            game_punt_return_yards,
+            game_yards_per_punt_return,
+            game_long_punt_return,
+            game_punt_return_touchdowns,
+            game_field_goals,
+            game_field_goal_pct,
+            game_long_field_goal,
+            game_extra_points,
+            game_total_kicking_points,
+            game_punts,
+            game_punt_yards,
+            game_gross_avg_punt_yards,
+            game_touchbacks,
+            game_punts_inside_20,
+            game_long_punt
+        ) in rows:
+
+            if game_kick_returns is not None:
+                kick_returns += game_kick_returns
+
+            if game_kick_return_yards is not None:
+                kick_return_yards += game_kick_return_yards
+
+            if game_kick_return_touchdowns is not None:
+                kick_return_touchdowns += (
+                    game_kick_return_touchdowns
+                )
+
+            if game_long_kick_return is not None:
+                long_kick_return = max(
+                    long_kick_return or game_long_kick_return,
+                    game_long_kick_return
+                )
+
+            if game_punt_returns is not None:
+                punt_returns += game_punt_returns
+
+            if game_punt_return_yards is not None:
+                punt_return_yards += game_punt_return_yards
+
+            if game_punt_return_touchdowns is not None:
+                punt_return_touchdowns += (
+                    game_punt_return_touchdowns
+                )
+
+            if game_long_punt_return is not None:
+                long_punt_return = max(
+                    long_punt_return or game_long_punt_return,
+                    game_long_punt_return
+                )
+
+            if game_field_goals:
+                made, attempted = game_field_goals.split("/")
+                field_goals_made += int(made)
+                field_goal_attempts += int(attempted)
+
+            if game_long_field_goal is not None:
+                long_field_goal_made = max(
+                    long_field_goal_made
+                    or game_long_field_goal,
+                    game_long_field_goal
+                )
+
+            if game_extra_points:
+                made, attempted = game_extra_points.split("/")
+                extra_points_made += int(made)
+                extra_point_attempts += int(attempted)
+
+            if game_total_kicking_points is not None:
+                total_kicking_points += game_total_kicking_points
+
+            if game_punts is not None:
+                punts += game_punts
+
+            if game_punt_yards is not None:
+                punt_yards += game_punt_yards
+
+            if game_touchbacks is not None:
+                touchbacks += game_touchbacks
+
+            if game_punts_inside_20 is not None:
+                punts_inside_20 += game_punts_inside_20
+
+            if game_long_punt is not None:
+                long_punt = max(
+                    long_punt or game_long_punt,
+                    game_long_punt
+                )
+
+        profiles[player_id] = {
+            "games_played": len(rows),
+
+            "kick_returns": kick_returns,
+            "kick_return_yards": kick_return_yards,
+            "yards_per_kick_return": (
+                kick_return_yards / kick_returns
+                if kick_returns
+                else 0
+            ),
+            "long_kick_return": long_kick_return,
+            "kick_return_touchdowns": kick_return_touchdowns,
+
+            "punt_returns": punt_returns,
+            "punt_return_yards": punt_return_yards,
+            "yards_per_punt_return": (
+                punt_return_yards / punt_returns
+                if punt_returns
+                else 0
+            ),
+            "long_punt_return": long_punt_return,
+            "punt_return_touchdowns": punt_return_touchdowns,
+
+            "field_goals_made": field_goals_made,
+            "field_goal_attempts": field_goal_attempts,
+            "field_goal_pct": (
+                field_goals_made / field_goal_attempts
+                if field_goal_attempts
+                else 0
+            ),
+            "long_field_goal_made": long_field_goal_made,
+
+            "extra_points_made": extra_points_made,
+            "extra_point_attempts": extra_point_attempts,
+            "total_kicking_points": total_kicking_points,
+
+            "punts": punts,
+            "punt_yards": punt_yards,
+            "gross_avg_punt_yards": (
+                punt_yards / punts
+                if punts
+                else 0
+            ),
+            "touchbacks": touchbacks,
+            "punts_inside_20": punts_inside_20,
+            "long_punt": long_punt
+        }
+
+    return profiles
+
 
 def get_depth_players(
     cursor,
@@ -1166,6 +1951,56 @@ def get_depth_players(
     )
 
     return cursor.fetchall()
+
+def get_depth_players_bulk(
+    cursor,
+    team_ids
+):
+    if not team_ids:
+        return {}
+
+    cursor.execute(
+        """
+        SELECT
+            d.team_id,
+            d.position_group,
+            d.position_slot,
+            d.position,
+            d.player_id,
+            d.player_name,
+            p.jersey,
+            p.status,
+            p.headshot,
+            d.depth_order
+        FROM nfl_depth_chart d
+        LEFT JOIN nfl_players p
+            ON d.player_id = p.player_id
+        WHERE d.team_id = ANY(%s)
+          AND d.position_group IN ('OFF', 'DEF', 'ST')
+          AND d.depth_order > 1
+        ORDER BY
+            d.team_id,
+            d.position_group,
+            d.position_slot,
+            d.depth_order;
+        """,
+        (team_ids,)
+    )
+
+    depth_map = {}
+
+    for row in cursor.fetchall():
+        team_id = row[0]
+        position_group = row[1]
+
+        player = row[2:]
+
+        depth_map.setdefault(
+            (team_id, position_group),
+            []
+        ).append(player)
+
+    return depth_map
 
 
 def get_league_matchup_baselines(
@@ -1755,6 +2590,84 @@ def get_team_record_before_date(
 
     return f"{wins}-{losses}"
 
+def get_league_records_before_date(
+    cursor,
+    season,
+    cutoff_date
+):
+    cursor.execute(
+        """
+        SELECT
+            team_id,
+            SUM(wins) AS wins,
+            SUM(losses) AS losses,
+            SUM(ties) AS ties
+        FROM (
+            SELECT
+                home_team_id AS team_id,
+                CASE
+                    WHEN home_score > away_score THEN 1
+                    ELSE 0
+                END AS wins,
+                CASE
+                    WHEN home_score < away_score THEN 1
+                    ELSE 0
+                END AS losses,
+                CASE
+                    WHEN home_score = away_score THEN 1
+                    ELSE 0
+                END AS ties
+            FROM nfl_games
+            WHERE season = %s
+              AND completed = TRUE
+              AND game_date < %s
+
+            UNION ALL
+
+            SELECT
+                away_team_id AS team_id,
+                CASE
+                    WHEN away_score > home_score THEN 1
+                    ELSE 0
+                END AS wins,
+                CASE
+                    WHEN away_score < home_score THEN 1
+                    ELSE 0
+                END AS losses,
+                CASE
+                    WHEN away_score = home_score THEN 1
+                    ELSE 0
+                END AS ties
+            FROM nfl_games
+            WHERE season = %s
+              AND completed = TRUE
+              AND game_date < %s
+        ) results
+        WHERE team_id IS NOT NULL
+        GROUP BY team_id;
+        """,
+        (
+            season,
+            cutoff_date,
+            season,
+            cutoff_date,
+        )
+    )
+
+    records = {}
+
+    for team_id, wins, losses, ties in cursor.fetchall():
+        if ties:
+            records[team_id] = (
+                f"{wins}-{losses}-{ties}"
+            )
+        else:
+            records[team_id] = (
+                f"{wins}-{losses}"
+            )
+
+    return records
+
 
 def get_league_power_rankings(
     cursor,
@@ -1763,10 +2676,7 @@ def get_league_power_rankings(
 ):
     cursor.execute(
         """
-        SELECT DISTINCT
-            team_id,
-            team_name
-        FROM (
+        WITH teams AS (
             SELECT
                 home_team_id AS team_id,
                 home_team AS team_name
@@ -1780,39 +2690,282 @@ def get_league_power_rankings(
                 away_team AS team_name
             FROM nfl_games
             WHERE season = %s
-        ) teams
-        WHERE team_id IS NOT NULL
-        ORDER BY team_name;
+        ),
+
+        scoring_games AS (
+            SELECT
+                home_team_id AS team_id,
+                home_score AS points_for,
+                away_score AS points_against
+            FROM nfl_games
+            WHERE season = %s
+              AND completed = TRUE
+              AND game_date < %s
+
+            UNION ALL
+
+            SELECT
+                away_team_id AS team_id,
+                away_score AS points_for,
+                home_score AS points_against
+            FROM nfl_games
+            WHERE season = %s
+              AND completed = TRUE
+              AND game_date < %s
+        ),
+
+        scoring AS (
+            SELECT
+                team_id,
+                AVG(
+                    points_for - points_against
+                )::FLOAT AS scoring_margin
+            FROM scoring_games
+            GROUP BY team_id
+        ),
+
+        offense AS (
+            SELECT
+                s.team_id,
+
+                AVG(
+                    s.yards_per_play
+                )::FLOAT AS yards_per_play,
+
+                AVG(
+                    s.turnovers
+                )::FLOAT AS turnovers_per_game,
+
+                (
+                    SUM(
+                        SPLIT_PART(
+                            s.third_down_eff,
+                            '-',
+                            1
+                        )::NUMERIC
+                    )
+                    /
+                    NULLIF(
+                        SUM(
+                            SPLIT_PART(
+                                s.third_down_eff,
+                                '-',
+                                2
+                            )::NUMERIC
+                        ),
+                        0
+                    )
+                )::FLOAT AS third_down_pct,
+
+                (
+                    SUM(
+                        SPLIT_PART(
+                            s.red_zone_eff,
+                            '-',
+                            1
+                        )::NUMERIC
+                    )
+                    /
+                    NULLIF(
+                        SUM(
+                            SPLIT_PART(
+                                s.red_zone_eff,
+                                '-',
+                                2
+                            )::NUMERIC
+                        ),
+                        0
+                    )
+                )::FLOAT AS red_zone_pct
+
+            FROM nfl_team_game_stats s
+
+            JOIN nfl_games g
+                ON s.game_id = g.game_id
+
+            WHERE g.season = %s
+              AND g.completed = TRUE
+              AND g.game_date < %s
+
+            GROUP BY s.team_id
+        ),
+
+        defense AS (
+            SELECT
+                team.team_id,
+
+                AVG(
+                    opponent.yards_per_play
+                )::FLOAT AS yards_per_play_allowed,
+
+                AVG(
+                    opponent.turnovers
+                )::FLOAT AS takeaways_per_game,
+
+                (
+                    SUM(
+                        SPLIT_PART(
+                            opponent.third_down_eff,
+                            '-',
+                            1
+                        )::NUMERIC
+                    )
+                    /
+                    NULLIF(
+                        SUM(
+                            SPLIT_PART(
+                                opponent.third_down_eff,
+                                '-',
+                                2
+                            )::NUMERIC
+                        ),
+                        0
+                    )
+                )::FLOAT AS opponent_third_down_pct,
+
+                (
+                    SUM(
+                        SPLIT_PART(
+                            opponent.red_zone_eff,
+                            '-',
+                            1
+                        )::NUMERIC
+                    )
+                    /
+                    NULLIF(
+                        SUM(
+                            SPLIT_PART(
+                                opponent.red_zone_eff,
+                                '-',
+                                2
+                            )::NUMERIC
+                        ),
+                        0
+                    )
+                )::FLOAT AS opponent_red_zone_pct
+
+            FROM nfl_team_game_stats team
+
+            JOIN nfl_games g
+                ON team.game_id = g.game_id
+
+            JOIN nfl_team_game_stats opponent
+                ON team.game_id = opponent.game_id
+                AND team.team_id <> opponent.team_id
+
+            WHERE g.season = %s
+              AND g.completed = TRUE
+              AND g.game_date < %s
+
+            GROUP BY team.team_id
+        )
+
+        SELECT
+            teams.team_id,
+            teams.team_name,
+            scoring.scoring_margin,
+            offense.yards_per_play,
+            offense.turnovers_per_game,
+            offense.third_down_pct,
+            offense.red_zone_pct,
+            defense.yards_per_play_allowed,
+            defense.takeaways_per_game,
+            defense.opponent_third_down_pct,
+            defense.opponent_red_zone_pct
+
+        FROM teams
+
+        LEFT JOIN scoring
+            ON teams.team_id = scoring.team_id
+
+        LEFT JOIN offense
+            ON teams.team_id = offense.team_id
+
+        LEFT JOIN defense
+            ON teams.team_id = defense.team_id
+
+        WHERE teams.team_id IS NOT NULL
+
+        ORDER BY teams.team_name;
         """,
-        (season, season)
+        (
+            season,
+            season,
+
+            season,
+            cutoff_date,
+            season,
+            cutoff_date,
+
+            season,
+            cutoff_date,
+
+            season,
+            cutoff_date,
+        )
     )
 
-    teams = cursor.fetchall()
+    rows = cursor.fetchall()
 
     rankings = []
 
-    for team_id, team_name in teams:
+    for (
+        team_id,
+        team_name,
+        scoring_margin,
+        yards_per_play,
+        turnovers_per_game,
+        third_down_pct,
+        red_zone_pct,
+        yards_per_play_allowed,
+        takeaways_per_game,
+        opponent_third_down_pct,
+        opponent_red_zone_pct,
+    ) in rows:
 
-        scoring = get_team_scoring_profile(
-            cursor,
-            team_id,
-            season,
-            cutoff_date
+        required_values = (
+            scoring_margin,
+            yards_per_play,
+            turnovers_per_game,
+            third_down_pct,
+            red_zone_pct,
+            yards_per_play_allowed,
+            takeaways_per_game,
+            opponent_third_down_pct,
+            opponent_red_zone_pct,
         )
 
-        offense = get_team_boxscore_profile(
-            cursor,
-            team_id,
-            season,
-            cutoff_date
-        )
+        if any(
+            value is None
+            for value in required_values
+        ):
+            continue
 
-        defense = get_team_defensive_profile(
-            cursor,
-            team_id,
-            season,
-            cutoff_date
-        )
+        scoring = {
+            "scoring_margin": scoring_margin
+        }
+
+        offense = {
+            "yards_per_play": yards_per_play,
+            "turnovers_per_game": turnovers_per_game,
+            "third_down_pct": third_down_pct,
+            "red_zone_pct": red_zone_pct,
+        }
+
+        defense = {
+            "yards_per_play_allowed": (
+                yards_per_play_allowed
+            ),
+            "takeaways_per_game": (
+                takeaways_per_game
+            ),
+            "opponent_third_down_pct": (
+                opponent_third_down_pct
+            ),
+            "opponent_red_zone_pct": (
+                opponent_red_zone_pct
+            ),
+        }
 
         power = get_team_power_rating(
             scoring,
@@ -1823,8 +2976,9 @@ def get_league_power_rankings(
         if power is not None:
             rankings.append(
                 {
+                    "team_id": team_id,
                     "team": team_name,
-                    "rating": power["rating"]
+                    "rating": power["rating"],
                 }
             )
 

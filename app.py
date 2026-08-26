@@ -58,11 +58,14 @@ from data import (
     get_defensive_starters,
     get_special_teams_starters,
     get_qb_profile,
+    get_qb_profiles,
     get_rb_profile,
-    get_receiving_profile,
-    get_defensive_player_profile,
+    get_rb_profiles,
+    get_receiving_profiles,
+    get_defensive_player_profiles,
     get_special_teams_profile,
-    get_depth_players,
+    get_special_teams_profiles,
+    get_depth_players_bulk,
     get_league_matchup_baselines,
     get_game_team_stats,
     get_game_player_stats,
@@ -72,6 +75,7 @@ from data import (
     get_game_weather,
     get_latest_betting_snapshot,
     get_team_record_before_date,
+    get_league_records_before_date,
     get_league_power_rankings,
 )
 
@@ -269,7 +273,7 @@ with nav_home:
     if st.button(
         "Home",
         key="nav_home",
-        use_container_width=True
+        width="stretch"
     ):
         st.session_state["page"] = "home"
         st.session_state["selected_game"] = None
@@ -279,7 +283,7 @@ with nav_schedule:
     if st.button(
         "Schedule",
         key="nav_schedule",
-        use_container_width=True
+        width="stretch"
     ):
         st.session_state["page"] = "schedule"
         st.session_state["selected_game"] = None
@@ -289,7 +293,7 @@ with nav_power:
     if st.button(
         "Power Rankings",
         key="nav_power_rankings",
-        use_container_width=True
+        width="stretch"
     ):
         st.session_state["page"] = "power_rankings"
         st.session_state["selected_game"] = None
@@ -343,7 +347,7 @@ if st.session_state["page"] == "home":
             if st.button(
                 "View Schedule",
                 key="home_schedule",
-                use_container_width=True
+                width="stretch"
             ):
                 st.session_state["page"] = "schedule"
                 st.rerun()
@@ -359,7 +363,7 @@ if st.session_state["page"] == "home":
             if st.button(
                 "View Power Rankings",
                 key="home_power_rankings",
-                use_container_width=True
+                width="stretch"
             ):
                 st.session_state["page"] = "power_rankings"
                 st.rerun()
@@ -435,7 +439,7 @@ if st.session_state["page"] == "home":
     st.dataframe(
         pd.DataFrame(feature_rows),
         hide_index=True,
-        use_container_width=True
+        width="stretch"
     )
 
     st.stop()
@@ -519,6 +523,7 @@ if (
     st.session_state["page"] == "game"
     and st.session_state["selected_game"]
 ):
+
 
     selected_game_id = st.session_state["selected_game"]
 
@@ -823,6 +828,7 @@ if (
         away_team_id
     )
 
+
     home_game_team_stats = get_game_team_stats(
         cursor,
         game_id,
@@ -887,6 +893,7 @@ if (
         game_id
     )
 
+
     away_ml_probability = None
     home_ml_probability = None
 
@@ -909,6 +916,7 @@ if (
             away_ml_probability,
             home_ml_probability
         )
+
     away_offensive_starters = get_offensive_starters(
         cursor,
         away_team_id
@@ -1007,43 +1015,52 @@ if (
         if starter[0] in ("wr1", "wr2", "wr3", "te")
     ]
 
-    away_receiver_profiles = []
-
-    for receiver in away_receivers:
-        profile = get_receiving_profile(
-            cursor,
-            receiver[2],
-            DISPLAY_SEASON,
-            game_date
+    receiver_player_ids = list({
+        receiver[2]
+        for receiver in (
+            away_receivers
+            + home_receivers
         )
+        if receiver[2] is not None
+    })
 
-        away_receiver_profiles.append(
-            (receiver, profile)
+    receiver_profile_map = get_receiving_profiles(
+        cursor,
+        receiver_player_ids,
+        DISPLAY_SEASON,
+        game_date
+    )
+
+    away_receiver_profiles = [
+        (
+            receiver,
+            receiver_profile_map.get(
+                receiver[2]
+            )
         )
+        for receiver in away_receivers
+    ]
 
-
-    home_receiver_profiles = []
-
-    for receiver in home_receivers:
-        profile = get_receiving_profile(
-            cursor,
-            receiver[2],
-            DISPLAY_SEASON,
-            game_date
+    home_receiver_profiles = [
+        (
+            receiver,
+            receiver_profile_map.get(
+                receiver[2]
+            )
         )
-
-        home_receiver_profiles.append(
-            (receiver, profile)
-        )
+        for receiver in home_receivers
+    ]
 
     away_receiver_profile_map = {
         receiver[2]: profile
-        for receiver, profile in away_receiver_profiles
+        for receiver, profile
+        in away_receiver_profiles
     }
 
     home_receiver_profile_map = {
         receiver[2]: profile
-        for receiver, profile in home_receiver_profiles
+        for receiver, profile
+        in home_receiver_profiles
     }
 
     away_offensive_map = {
@@ -1094,33 +1111,38 @@ if (
         )
     ]
 
-    away_defensive_profile_map = {}
-
-    for starter in away_defensive_starters:
-        player_id = starter[2]
-
-        away_defensive_profile_map[player_id] = (
-            get_defensive_player_profile(
-                cursor,
-                player_id,
-                DISPLAY_SEASON,
-                game_date
-            )
+    defensive_player_ids = list({
+        starter[2]
+        for starter in (
+            away_defensive_starters
+            + home_defensive_starters
         )
+        if starter[2] is not None
+    })
 
-    home_defensive_profile_map = {}
-
-    for starter in home_defensive_starters:
-        player_id = starter[2]
-
-        home_defensive_profile_map[player_id] = (
-            get_defensive_player_profile(
-                cursor,
-                player_id,
-                DISPLAY_SEASON,
-                game_date
-            )
+    defensive_profile_map = (
+        get_defensive_player_profiles(
+            cursor,
+            defensive_player_ids,
+            DISPLAY_SEASON,
+            game_date
         )
+    )
+
+    away_defensive_profile_map = {
+        starter[2]: defensive_profile_map.get(
+            starter[2]
+        )
+        for starter in away_defensive_starters
+    }
+
+    home_defensive_profile_map = {
+        starter[2]: defensive_profile_map.get(
+            starter[2]
+        )
+        for starter in home_defensive_starters
+    }
+
 
     away_special_teams = get_special_teams_starters(
         cursor,
@@ -1180,41 +1202,44 @@ if (
         )
     ]
 
-    away_offensive_depth = get_depth_players(
+    depth_map = get_depth_players_bulk(
         cursor,
-        away_team_id,
-        "OFF"
+        [
+            away_team_id,
+            home_team_id
+        ]
     )
 
-    home_offensive_depth = get_depth_players(
-        cursor,
-        home_team_id,
-        "OFF"
+    away_offensive_depth = depth_map.get(
+        (away_team_id, "OFF"),
+        []
     )
 
-    away_defensive_depth = get_depth_players(
-        cursor,
-        away_team_id,
-        "DEF"
+    home_offensive_depth = depth_map.get(
+        (home_team_id, "OFF"),
+        []
     )
 
-    home_defensive_depth = get_depth_players(
-        cursor,
-        home_team_id,
-        "DEF"
+    away_defensive_depth = depth_map.get(
+        (away_team_id, "DEF"),
+        []
     )
 
-    away_special_teams_depth = get_depth_players(
-        cursor,
-        away_team_id,
-        "ST"
+    home_defensive_depth = depth_map.get(
+        (home_team_id, "DEF"),
+        []
     )
 
-    home_special_teams_depth = get_depth_players(
-        cursor,
-        home_team_id,
-        "ST"
+    away_special_teams_depth = depth_map.get(
+        (away_team_id, "ST"),
+        []
     )
+
+    home_special_teams_depth = depth_map.get(
+        (home_team_id, "ST"),
+        []
+    )
+
 
     league_power_rankings = get_league_power_rankings(
         cursor,
@@ -1240,131 +1265,161 @@ if (
         None
     )
 
-    away_offensive_depth_profile_map = {}
 
-    for player in away_offensive_depth:
-        (
-            position_slot,
-            position,
-            player_id,
-            player_name,
-            jersey,
-            status,
-            headshot,
-            depth_order
-        ) = player
+    all_offensive_depth = (
+        away_offensive_depth
+        + home_offensive_depth
+    )
+
+    qb_player_ids = list({
+        player[2]
+        for player in all_offensive_depth
+        if (
+            player[1] == "QB"
+            and player[2] is not None
+        )
+    })
+
+    rb_player_ids = list({
+        player[2]
+        for player in all_offensive_depth
+        if (
+            player[1] == "RB"
+            and player[2] is not None
+        )
+    })
+
+    receiver_depth_player_ids = list({
+        player[2]
+        for player in all_offensive_depth
+        if (
+            player[1] in ("WR", "TE")
+            and player[2] is not None
+        )
+    })
+
+    qb_depth_profiles = get_qb_profiles(
+        cursor,
+        qb_player_ids,
+        DISPLAY_SEASON,
+        game_date
+    )
+
+    rb_depth_profiles = get_rb_profiles(
+        cursor,
+        rb_player_ids,
+        DISPLAY_SEASON,
+        game_date
+    )
+
+    receiver_depth_profiles = get_receiving_profiles(
+        cursor,
+        receiver_depth_player_ids,
+        DISPLAY_SEASON,
+        game_date
+    )
+
+
+    def get_offensive_depth_profile(player):
+        player_id = player[2]
+        position = player[1]
 
         if position == "QB":
-            profile = get_qb_profile(
-                cursor,
-                player_id,
-                DISPLAY_SEASON,
-                game_date
+            return qb_depth_profiles.get(
+                player_id
             )
 
-        elif position == "RB":
-            profile = get_rb_profile(
-                cursor,
-                player_id,
-                DISPLAY_SEASON,
-                game_date
+        if position == "RB":
+            return rb_depth_profiles.get(
+                player_id
             )
 
-        elif position in ("WR", "TE"):
-            profile = get_receiving_profile(
-                cursor,
-                player_id,
-                DISPLAY_SEASON,
-                game_date
+        if position in ("WR", "TE"):
+            return receiver_depth_profiles.get(
+                player_id
             )
 
-        else:
-            profile = None
+        return None
 
-        away_offensive_depth_profile_map[player_id] = profile
 
-    home_offensive_depth_profile_map = {}
+    away_offensive_depth_profile_map = {
+        player[2]: get_offensive_depth_profile(
+            player
+        )
+        for player in away_offensive_depth
+    }
 
-    for player in home_offensive_depth:
-        (
-            position_slot,
-            position,
-            player_id,
-            player_name,
-            jersey,
-            status,
-            headshot,
-            depth_order
-        ) = player
+    home_offensive_depth_profile_map = {
+        player[2]: get_offensive_depth_profile(
+            player
+        )
+        for player in home_offensive_depth
+    }
 
-        if position == "QB":
-            profile = get_qb_profile(
-                cursor,
-                player_id,
-                DISPLAY_SEASON,
-                game_date
-            )
+    defensive_depth_player_ids = list({
+        player[2]
+        for player in (
+            away_defensive_depth
+            + home_defensive_depth
+        )
+        if player[2] is not None
+    })
 
-        elif position == "RB":
-            profile = get_rb_profile(
-                cursor,
-                player_id,
-                DISPLAY_SEASON,
-                game_date
-            )
-
-        elif position in ("WR", "TE"):
-            profile = get_receiving_profile(
-                cursor,
-                player_id,
-                DISPLAY_SEASON,
-                game_date
-            )
-
-        else:
-            profile = None
-
-        home_offensive_depth_profile_map[player_id] = profile
-
-    away_defensive_depth_profile_map = {
-        player[2]: get_defensive_player_profile(
+    defensive_depth_profiles = (
+        get_defensive_player_profiles(
             cursor,
-            player[2],
+            defensive_depth_player_ids,
             DISPLAY_SEASON,
             game_date
+        )
+    )
+
+    away_defensive_depth_profile_map = {
+        player[2]: defensive_depth_profiles.get(
+            player[2]
         )
         for player in away_defensive_depth
     }
 
     home_defensive_depth_profile_map = {
-        player[2]: get_defensive_player_profile(
-            cursor,
-            player[2],
-            DISPLAY_SEASON,
-            game_date
+        player[2]: defensive_depth_profiles.get(
+            player[2]
         )
         for player in home_defensive_depth
     }
 
-    away_special_teams_depth_profile_map = {
-        player[2]: get_special_teams_profile(
+    special_teams_depth_player_ids = list({
+        player[2]
+        for player in (
+            away_special_teams_depth
+            + home_special_teams_depth
+        )
+        if player[2] is not None
+    })
+
+    special_teams_depth_profiles = (
+        get_special_teams_profiles(
             cursor,
-            player[2],
+            special_teams_depth_player_ids,
             DISPLAY_SEASON,
             game_date
+        )
+    )
+
+    away_special_teams_depth_profile_map = {
+        player[2]: special_teams_depth_profiles.get(
+            player[2]
         )
         for player in away_special_teams_depth
     }
 
     home_special_teams_depth_profile_map = {
-        player[2]: get_special_teams_profile(
-            cursor,
-            player[2],
-            DISPLAY_SEASON,
-            game_date
+        player[2]: special_teams_depth_profiles.get(
+            player[2]
         )
         for player in home_special_teams_depth
     }
+
 
     (
         away_offensive_depth_map,
@@ -1558,6 +1613,7 @@ if (
         )
 
     st.divider()
+
 
     (
         overview_tab,
@@ -1815,7 +1871,7 @@ if (
         st.dataframe(
             breakdown_df,
             hide_index=True,
-            use_container_width=True
+            width="stretch"
         )
 
         st.caption(
@@ -1872,7 +1928,7 @@ if (
             st.dataframe(
                 model_market_df,
                 hide_index=True,
-                use_container_width=True
+                width="stretch"
             )
 
             st.markdown("### Model Edge")
@@ -1996,7 +2052,7 @@ if (
 
             st.dataframe(
                 scoring_rows,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True
             )
 
@@ -2056,7 +2112,7 @@ if (
 
             st.dataframe(
                 offense_rows,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True
             )
 
@@ -2117,14 +2173,18 @@ if (
                 },
                 {
                     "Metric": "Defensive TDs",
-                    away_team: away_defense["defensive_touchdowns"],
-                    home_team: home_defense["defensive_touchdowns"]
+                    away_team: str(
+                        away_defense["defensive_touchdowns"]
+                    ),
+                    home_team: str(
+                        home_defense["defensive_touchdowns"]
+                    )
                 }
             ]
 
             st.dataframe(
                 defense_rows,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True
             )
 
@@ -2178,7 +2238,7 @@ if (
 
             st.dataframe(
                 recent_form_rows,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True
             )
 
@@ -2992,7 +3052,7 @@ if (
 
                 st.dataframe(
                     away_injury_table,
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config={
                         "Player": st.column_config.TextColumn(
@@ -3052,7 +3112,7 @@ if (
 
                 st.dataframe(
                     home_injury_table,
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     column_config={
                         "Player": st.column_config.TextColumn(
@@ -3362,7 +3422,7 @@ if (
 
             st.dataframe(
                 market_rows,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True
             )
 
@@ -3531,7 +3591,7 @@ if (
 
             st.dataframe(
                 history_rows,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config={
                     "Date": st.column_config.TextColumn(
@@ -3624,49 +3684,20 @@ if st.session_state["page"] == "power_rankings":
             )
 
         else:
+            league_records = get_league_records_before_date(
+            cursor,
+            DISPLAY_SEASON,
+            ranking_cutoff_date
+            )
+
             ranking_rows = []
 
             for team in league_power_rankings:
 
-                cursor.execute(
-                    """
-                    SELECT team_id
-                    FROM (
-                        SELECT
-                            home_team_id AS team_id,
-                            home_team AS team_name
-                        FROM nfl_games
-                        WHERE season = %s
-
-                        UNION
-
-                        SELECT
-                            away_team_id AS team_id,
-                            away_team AS team_name
-                        FROM nfl_games
-                        WHERE season = %s
-                    ) teams
-                    WHERE team_name = %s
-                    LIMIT 1;
-                    """,
-                    (
-                        DISPLAY_SEASON,
-                        DISPLAY_SEASON,
-                        team["team"]
-                    )
+                team_record = league_records.get(
+                    team["team_id"],
+                    "—"
                 )
-
-                team_id_row = cursor.fetchone()
-
-                team_record = "—"
-
-                if team_id_row:
-                    team_record = get_team_record_before_date(
-                        cursor,
-                        team_id_row[0],
-                        DISPLAY_SEASON,
-                        ranking_cutoff_date
-                    )
 
                 ranking_rows.append(
                     {
