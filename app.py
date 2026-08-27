@@ -570,6 +570,12 @@ if (
         home_conference_record,
         home_streak
     ) = selected_game
+
+    if "game_section" not in st.session_state:
+        st.session_state["game_section"] = "Overview"
+
+    selected_game_section = st.session_state["game_section"]
+
     away_last_three = get_last_three(
         cursor,
         away_team_id,
@@ -584,314 +590,368 @@ if (
         game_date
     )
 
-    head_to_head = get_head_to_head(
-        cursor,
-        away_team_id,
-        home_team_id,
-        game_date
-    )
+    head_to_head = None
 
-    away_scoring = get_team_scoring_profile(
-        cursor,
-        away_team_id,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    home_scoring = get_team_scoring_profile(
-        cursor,
-        home_team_id,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    away_current_games = (
-        away_scoring["games_played"]
-        if away_scoring
-        else 0
-    )
-
-    home_current_games = (
-        home_scoring["games_played"]
-        if home_scoring
-        else 0
-    )
-
-    away_blend_weights = get_season_blend_weights(
-        away_current_games
-    )
-
-    home_blend_weights = get_season_blend_weights(
-        home_current_games
-    )
-
-    away_boxscore = get_team_boxscore_profile(
-        cursor,
-        away_team_id,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    home_boxscore = get_team_boxscore_profile(
-        cursor,
-        home_team_id,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    away_defense = get_team_defensive_profile(
-        cursor,
-        away_team_id,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    home_defense = get_team_defensive_profile(
-        cursor,
-        home_team_id,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    previous_season = DISPLAY_SEASON - 1
-
-    away_previous_scoring = get_team_scoring_profile(
-        cursor,
-        away_team_id,
-        previous_season,
-        game_date
-    )
-
-    home_previous_scoring = get_team_scoring_profile(
-        cursor,
-        home_team_id,
-        previous_season,
-        game_date
-    )
-
-    away_previous_boxscore = get_team_boxscore_profile(
-        cursor,
-        away_team_id,
-        previous_season,
-        game_date
-    )
-
-    home_previous_boxscore = get_team_boxscore_profile(
-        cursor,
-        home_team_id,
-        previous_season,
-        game_date
-    )
-
-    away_previous_defense = get_team_defensive_profile(
-        cursor,
-        away_team_id,
-        previous_season,
-        game_date
-    )
-
-    home_previous_defense = get_team_defensive_profile(
-        cursor,
-        home_team_id,
-        previous_season,
-        game_date
-    )
-
-    away_scoring_blended = blend_profile(
-        away_previous_scoring,
-        away_scoring,
-        away_blend_weights["previous_season"],
-        away_blend_weights["current_season"]
-    )
-
-    home_scoring_blended = blend_profile(
-        home_previous_scoring,
-        home_scoring,
-        home_blend_weights["previous_season"],
-        home_blend_weights["current_season"]
-    )
-
-    away_boxscore_blended = blend_profile(
-        away_previous_boxscore,
-        away_boxscore,
-        away_blend_weights["previous_season"],
-        away_blend_weights["current_season"]
-    )
-
-    home_boxscore_blended = blend_profile(
-        home_previous_boxscore,
-        home_boxscore,
-        home_blend_weights["previous_season"],
-        home_blend_weights["current_season"]
-    )
-
-    away_defense_blended = blend_profile(
-        away_previous_defense,
-        away_defense,
-        away_blend_weights["previous_season"],
-        away_blend_weights["current_season"]
-    )
-
-    home_defense_blended = blend_profile(
-        home_previous_defense,
-        home_defense,
-        home_blend_weights["previous_season"],
-        home_blend_weights["current_season"]
-    )
-
-    away_offense_vs_home_defense = get_matchup_comparison(
-        away_boxscore_blended,
-        home_defense_blended
-    )
-
-    home_offense_vs_away_defense = get_matchup_comparison(
-        home_boxscore_blended,
-        away_defense_blended
-    )
-
-    away_power_rating = get_team_power_rating(
-        away_scoring_blended,
-        away_boxscore_blended,
-        away_defense_blended
-    )
-
-    home_power_rating = get_team_power_rating(
-        home_scoring_blended,
-        home_boxscore_blended,
-        home_defense_blended
-    )
-
-    away_matchup_advantages = get_matchup_advantages(
-        away_offense_vs_home_defense
-    )
-
-    home_matchup_advantages = get_matchup_advantages(
-        home_offense_vs_away_defense
-    )
-
-    league_matchup_baselines = get_league_matchup_baselines(
-        cursor,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    away_matchup_edges = get_matchup_edges(
-        away_offense_vs_home_defense,
-        league_matchup_baselines
-    )
-
-    home_matchup_edges = get_matchup_edges(
-        home_offense_vs_away_defense,
-        league_matchup_baselines
-    )
-
-    matchup_prediction_adjustment = (
-        get_matchup_prediction_adjustment(
-            away_matchup_edges,
-            home_matchup_edges
+    if selected_game_section == "History":
+        head_to_head = get_head_to_head(
+            cursor,
+            away_team_id,
+            home_team_id,
+            game_date
         )
-    )
 
-    recent_form_adjustment = get_recent_form_adjustment(
-        away_scoring,
-        home_scoring,
-        away_boxscore,
-        home_boxscore,
-        away_defense,
-        home_defense
-    )
+    if selected_game_section in (
+        "Overview",
+        "Prediction",
+        "Team Stats",
+        "Matchup"
+    ):
+        away_scoring = get_team_scoring_profile(
+            cursor,
+            away_team_id,
+            DISPLAY_SEASON,
+            game_date
+        )
 
-    raw_prediction_edge = get_raw_prediction_edge(
-        away_power_rating,
-        home_power_rating,
-        matchup_prediction_adjustment,
-        recent_form_adjustment
-    )
+        home_scoring = get_team_scoring_profile(
+            cursor,
+            home_team_id,
+            DISPLAY_SEASON,
+            game_date
+        )
 
-    game_prediction = get_v2_win_probability(
-        raw_prediction_edge["power_edge"]
-        if raw_prediction_edge
-        else None,
+        away_current_games = (
+            away_scoring["games_played"]
+            if away_scoring
+            else 0
+        )
 
-        raw_prediction_edge["matchup_edge"]
-        if raw_prediction_edge
-        else None,
+        home_current_games = (
+            home_scoring["games_played"]
+            if home_scoring
+            else 0
+        )
 
-        raw_prediction_edge["recent_form_edge"]
-        if raw_prediction_edge
-        else None
-    )
+        away_blend_weights = get_season_blend_weights(
+            away_current_games
+        )
 
-    away_game_team_stats = get_game_team_stats(
-        cursor,
-        game_id,
-        away_team_id
-    )
+        home_blend_weights = get_season_blend_weights(
+            home_current_games
+        )
+
+        away_boxscore = get_team_boxscore_profile(
+            cursor,
+            away_team_id,
+            DISPLAY_SEASON,
+            game_date
+        )
+
+        home_boxscore = get_team_boxscore_profile(
+            cursor,
+            home_team_id,
+            DISPLAY_SEASON,
+            game_date
+        )
+
+        away_defense = get_team_defensive_profile(
+            cursor,
+            away_team_id,
+            DISPLAY_SEASON,
+            game_date
+        )
+
+        home_defense = get_team_defensive_profile(
+            cursor,
+            home_team_id,
+            DISPLAY_SEASON,
+            game_date
+        )
+
+        previous_season = DISPLAY_SEASON - 1
+
+        away_previous_scoring = get_team_scoring_profile(
+            cursor,
+            away_team_id,
+            previous_season,
+            game_date
+        )
+
+        home_previous_scoring = get_team_scoring_profile(
+            cursor,
+            home_team_id,
+            previous_season,
+            game_date
+        )
+
+        away_previous_boxscore = get_team_boxscore_profile(
+            cursor,
+            away_team_id,
+            previous_season,
+            game_date
+        )
+
+        home_previous_boxscore = get_team_boxscore_profile(
+            cursor,
+            home_team_id,
+            previous_season,
+            game_date
+        )
+
+        away_previous_defense = get_team_defensive_profile(
+            cursor,
+            away_team_id,
+            previous_season,
+            game_date
+        )
+
+        home_previous_defense = get_team_defensive_profile(
+            cursor,
+            home_team_id,
+            previous_season,
+            game_date
+        )
+
+        away_scoring_blended = blend_profile(
+            away_previous_scoring,
+            away_scoring,
+            away_blend_weights["previous_season"],
+            away_blend_weights["current_season"]
+        )
+
+        home_scoring_blended = blend_profile(
+            home_previous_scoring,
+            home_scoring,
+            home_blend_weights["previous_season"],
+            home_blend_weights["current_season"]
+        )
+
+        away_boxscore_blended = blend_profile(
+            away_previous_boxscore,
+            away_boxscore,
+            away_blend_weights["previous_season"],
+            away_blend_weights["current_season"]
+        )
+
+        home_boxscore_blended = blend_profile(
+            home_previous_boxscore,
+            home_boxscore,
+            home_blend_weights["previous_season"],
+            home_blend_weights["current_season"]
+        )
+
+        away_defense_blended = blend_profile(
+            away_previous_defense,
+            away_defense,
+            away_blend_weights["previous_season"],
+            away_blend_weights["current_season"]
+        )
+
+        home_defense_blended = blend_profile(
+            home_previous_defense,
+            home_defense,
+            home_blend_weights["previous_season"],
+            home_blend_weights["current_season"]
+        )
+
+        away_offense_vs_home_defense = get_matchup_comparison(
+            away_boxscore_blended,
+            home_defense_blended
+        )
+
+        home_offense_vs_away_defense = get_matchup_comparison(
+            home_boxscore_blended,
+            away_defense_blended
+        )
+
+        away_power_rating = get_team_power_rating(
+            away_scoring_blended,
+            away_boxscore_blended,
+            away_defense_blended
+        )
+
+        home_power_rating = get_team_power_rating(
+            home_scoring_blended,
+            home_boxscore_blended,
+            home_defense_blended
+        )
+
+        away_matchup_advantages = get_matchup_advantages(
+            away_offense_vs_home_defense
+        )
+
+        home_matchup_advantages = get_matchup_advantages(
+            home_offense_vs_away_defense
+        )
+
+        league_matchup_baselines = get_league_matchup_baselines(
+            cursor,
+            DISPLAY_SEASON,
+            game_date
+        )
+
+        away_matchup_edges = get_matchup_edges(
+            away_offense_vs_home_defense,
+            league_matchup_baselines
+        )
+
+        home_matchup_edges = get_matchup_edges(
+            home_offense_vs_away_defense,
+            league_matchup_baselines
+        )
+
+        matchup_prediction_adjustment = (
+            get_matchup_prediction_adjustment(
+                away_matchup_edges,
+                home_matchup_edges
+            )
+        )
+
+        recent_form_adjustment = get_recent_form_adjustment(
+            away_scoring,
+            home_scoring,
+            away_boxscore,
+            home_boxscore,
+            away_defense,
+            home_defense
+        )
+
+        raw_prediction_edge = get_raw_prediction_edge(
+            away_power_rating,
+            home_power_rating,
+            matchup_prediction_adjustment,
+            recent_form_adjustment
+        )
+
+        game_prediction = get_v2_win_probability(
+            raw_prediction_edge["power_edge"]
+            if raw_prediction_edge
+            else None,
+
+            raw_prediction_edge["matchup_edge"]
+            if raw_prediction_edge
+            else None,
+
+            raw_prediction_edge["recent_form_edge"]
+            if raw_prediction_edge
+            else None
+        )
 
 
-    home_game_team_stats = get_game_team_stats(
-        cursor,
-        game_id,
-        home_team_id
-    )
+        away_last_three_turnover_diff = None
 
-    away_game_player_stats = get_game_player_stats(
-        cursor,
-        game_id,
-        away_team_id
-    )
+        if away_boxscore and away_defense:
+            away_last_three_turnover_diff = (
+                away_defense["last_three_takeaways"]
+                - away_boxscore["last_three_turnovers"]
+            )
 
-    home_game_player_stats = get_game_player_stats(
-        cursor,
-        game_id,
-        home_team_id
-    )
+        home_last_three_turnover_diff = None
 
-    away_injuries = get_game_injuries(
-        cursor,
-        game_id,
-        away_team_id
-    )
+        if home_boxscore and home_defense:
+            home_last_three_turnover_diff = (
+                home_defense["last_three_takeaways"]
+                - home_boxscore["last_three_turnovers"]
+            )
 
-    home_injuries = get_game_injuries(
-        cursor,
-        game_id,
-        home_team_id
-    )
+    away_game_team_stats = None
+    home_game_team_stats = None
 
-    away_injury_changes = get_injury_changes(
-        cursor,
-        game_id,
-        away_team_id
-    )
+    away_game_player_stats = None
+    home_game_player_stats = None
 
-    home_injury_changes = get_injury_changes(
-        cursor,
-        game_id,
-        home_team_id
-    )
+    away_injuries = None
+    home_injuries = None
 
-    away_injury_updated = get_latest_injury_snapshot_time(
-        cursor,
-        game_id,
-        away_team_id
-    )
+    away_injury_changes = None
+    home_injury_changes = None
 
-    home_injury_updated = get_latest_injury_snapshot_time(
-        cursor,
-        game_id,
-        home_team_id
-    )
+    away_injury_updated = None
+    home_injury_updated = None
 
-    game_weather = get_game_weather(
-        cursor,
-        game_id
-    )
+    game_weather = None
+    game_betting = None
 
-    game_betting = get_latest_betting_snapshot(
-        cursor,
-        game_id
-    )
+
+    if selected_game_section == "Game Stats":
+        away_game_team_stats = get_game_team_stats(
+            cursor,
+            game_id,
+            away_team_id
+        )
+
+        home_game_team_stats = get_game_team_stats(
+            cursor,
+            game_id,
+            home_team_id
+        )
+
+        away_game_player_stats = get_game_player_stats(
+            cursor,
+            game_id,
+            away_team_id
+        )
+
+        home_game_player_stats = get_game_player_stats(
+            cursor,
+            game_id,
+            home_team_id
+        )
+
+
+    if selected_game_section == "Injuries":
+        away_injuries = get_game_injuries(
+            cursor,
+            game_id,
+            away_team_id
+        )
+
+        home_injuries = get_game_injuries(
+            cursor,
+            game_id,
+            home_team_id
+        )
+
+        away_injury_changes = get_injury_changes(
+            cursor,
+            game_id,
+            away_team_id
+        )
+
+        home_injury_changes = get_injury_changes(
+            cursor,
+            game_id,
+            home_team_id
+        )
+
+        away_injury_updated = get_latest_injury_snapshot_time(
+            cursor,
+            game_id,
+            away_team_id
+        )
+
+        home_injury_updated = get_latest_injury_snapshot_time(
+            cursor,
+            game_id,
+            home_team_id
+        )
+
+
+    if selected_game_section == "Weather":
+        game_weather = get_game_weather(
+            cursor,
+            game_id
+        )
+
+
+    if selected_game_section in (
+        "Overview",
+        "Betting"
+    ):
+        game_betting = get_latest_betting_snapshot(
+            cursor,
+            game_id
+        )
 
 
     away_ml_probability = None
@@ -917,556 +977,517 @@ if (
             home_ml_probability
         )
 
-    away_offensive_starters = get_offensive_starters(
-        cursor,
-        away_team_id
-    )
-
-    home_offensive_starters = get_offensive_starters(
-        cursor,
-        home_team_id
-    )
-
-    away_qb = next(
-        (
-            starter
-            for starter in away_offensive_starters
-            if starter[0] == "qb"
-        ),
-        None
-    )
-
-    home_qb = next(
-        (
-            starter
-            for starter in home_offensive_starters
-            if starter[0] == "qb"
-        ),
-        None
-    )
-
-    away_qb_profile = None
-
-    if away_qb:
-        away_qb_profile = get_qb_profile(
+    if selected_game_section == "Players":
+        away_offensive_starters = get_offensive_starters(
             cursor,
-            away_qb[2],
-            DISPLAY_SEASON,
-            game_date
-        ) 
+            away_team_id
+        )
 
-    home_qb_profile = None
-
-    if home_qb:
-        home_qb_profile = get_qb_profile(
+        home_offensive_starters = get_offensive_starters(
             cursor,
-            home_qb[2],
-            DISPLAY_SEASON,
-            game_date
-        )
-
-    away_rb = next(
-        (
-            starter
-            for starter in away_offensive_starters
-            if starter[0] == "rb"
-        ),
-        None
-    )
-
-    home_rb = next(
-        (
-            starter
-            for starter in home_offensive_starters
-            if starter[0] == "rb"
-        ),
-        None
-    )
-
-    away_rb_profile = None
-
-    if away_rb:
-        away_rb_profile = get_rb_profile(
-            cursor,
-            away_rb[2],
-            DISPLAY_SEASON,
-            game_date
-        )
-
-    home_rb_profile = None
-
-    if home_rb:
-        home_rb_profile = get_rb_profile(
-            cursor,
-            home_rb[2],
-            DISPLAY_SEASON,
-            game_date
-        )
-
-    away_receivers = [
-        starter
-        for starter in away_offensive_starters
-        if starter[0] in ("wr1", "wr2", "wr3", "te")
-    ]
-
-    home_receivers = [
-        starter
-        for starter in home_offensive_starters
-        if starter[0] in ("wr1", "wr2", "wr3", "te")
-    ]
-
-    receiver_player_ids = list({
-        receiver[2]
-        for receiver in (
-            away_receivers
-            + home_receivers
-        )
-        if receiver[2] is not None
-    })
-
-    receiver_profile_map = get_receiving_profiles(
-        cursor,
-        receiver_player_ids,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    away_receiver_profiles = [
-        (
-            receiver,
-            receiver_profile_map.get(
-                receiver[2]
-            )
-        )
-        for receiver in away_receivers
-    ]
-
-    home_receiver_profiles = [
-        (
-            receiver,
-            receiver_profile_map.get(
-                receiver[2]
-            )
-        )
-        for receiver in home_receivers
-    ]
-
-    away_receiver_profile_map = {
-        receiver[2]: profile
-        for receiver, profile
-        in away_receiver_profiles
-    }
-
-    home_receiver_profile_map = {
-        receiver[2]: profile
-        for receiver, profile
-        in home_receiver_profiles
-    }
-
-    away_offensive_map = {
-                starter[0]: starter
-                for starter in away_offensive_starters
-            }
-    
-    home_offensive_map = {
-        starter[0]: starter
-        for starter in home_offensive_starters
-    }
-    
-    matchup_offensive_slots = [
-        slot
-        for slot in OFFENSIVE_DISPLAY_ORDER
-        if (
-            slot in away_offensive_map
-            or slot in home_offensive_map
-        )
-    ]
-
-    away_defensive_starters = get_defensive_starters(
-        cursor,
-        away_team_id
-    )
-
-    home_defensive_starters = get_defensive_starters(
-        cursor,
-        home_team_id
-    )
-
-    away_defensive_map = {
-        starter[0]: starter
-        for starter in away_defensive_starters
-    }
-
-    home_defensive_map = {
-        starter[0]: starter
-        for starter in home_defensive_starters
-    }
-
-    matchup_defensive_slots = [
-        slot
-        for slot in DEFENSIVE_DISPLAY_ORDER
-        if (
-            slot in away_defensive_map
-            or slot in home_defensive_map
-        )
-    ]
-
-    defensive_player_ids = list({
-        starter[2]
-        for starter in (
-            away_defensive_starters
-            + home_defensive_starters
-        )
-        if starter[2] is not None
-    })
-
-    defensive_profile_map = (
-        get_defensive_player_profiles(
-            cursor,
-            defensive_player_ids,
-            DISPLAY_SEASON,
-            game_date
-        )
-    )
-
-    away_defensive_profile_map = {
-        starter[2]: defensive_profile_map.get(
-            starter[2]
-        )
-        for starter in away_defensive_starters
-    }
-
-    home_defensive_profile_map = {
-        starter[2]: defensive_profile_map.get(
-            starter[2]
-        )
-        for starter in home_defensive_starters
-    }
-
-
-    away_special_teams = get_special_teams_starters(
-        cursor,
-        away_team_id
-    )
-
-    home_special_teams = get_special_teams_starters(
-        cursor,
-        home_team_id
-    )
-
-    away_special_teams_map = {
-        starter[0]: starter
-        for starter in away_special_teams
-    }
-
-    home_special_teams_map = {
-        starter[0]: starter
-        for starter in home_special_teams
-    }
-
-    away_special_teams_profile_map = {}
-
-    for starter in away_special_teams:
-        player_id = starter[2]
-
-        away_special_teams_profile_map[player_id] = (
-            get_special_teams_profile(
-                cursor,
-                player_id,
-                DISPLAY_SEASON,
-                game_date
-            )
-        )
-
-
-    home_special_teams_profile_map = {}
-
-    for starter in home_special_teams:
-        player_id = starter[2]
-
-        home_special_teams_profile_map[player_id] = (
-            get_special_teams_profile(
-                cursor,
-                player_id,
-                DISPLAY_SEASON,
-                game_date
-            )
-        )
-
-    matchup_special_teams_slots = [
-        slot
-        for slot in SPECIAL_TEAMS_DISPLAY_ORDER
-        if (
-            slot in away_special_teams_map
-            or slot in home_special_teams_map
-        )
-    ]
-
-    depth_map = get_depth_players_bulk(
-        cursor,
-        [
-            away_team_id,
             home_team_id
+        )
+
+        away_qb = next(
+            (
+                starter
+                for starter in away_offensive_starters
+                if starter[0] == "qb"
+            ),
+            None
+        )
+
+        home_qb = next(
+            (
+                starter
+                for starter in home_offensive_starters
+                if starter[0] == "qb"
+            ),
+            None
+        )
+
+        away_qb_profile = None
+
+        if away_qb:
+            away_qb_profile = get_qb_profile(
+                cursor,
+                away_qb[2],
+                DISPLAY_SEASON,
+                game_date
+            )
+
+        home_qb_profile = None
+
+        if home_qb:
+            home_qb_profile = get_qb_profile(
+                cursor,
+                home_qb[2],
+                DISPLAY_SEASON,
+                game_date
+            )
+
+        away_rb = next(
+            (
+                starter
+                for starter in away_offensive_starters
+                if starter[0] == "rb"
+            ),
+            None
+        )
+
+        home_rb = next(
+            (
+                starter
+                for starter in home_offensive_starters
+                if starter[0] == "rb"
+            ),
+            None
+        )
+
+        away_rb_profile = None
+
+        if away_rb:
+            away_rb_profile = get_rb_profile(
+                cursor,
+                away_rb[2],
+                DISPLAY_SEASON,
+                game_date
+            )
+
+        home_rb_profile = None
+
+        if home_rb:
+            home_rb_profile = get_rb_profile(
+                cursor,
+                home_rb[2],
+                DISPLAY_SEASON,
+                game_date
+            )
+
+        away_receivers = [
+            starter
+            for starter in away_offensive_starters
+            if starter[0] in ("wr1", "wr2", "wr3", "te")
         ]
-    )
 
-    away_offensive_depth = depth_map.get(
-        (away_team_id, "OFF"),
-        []
-    )
+        home_receivers = [
+            starter
+            for starter in home_offensive_starters
+            if starter[0] in ("wr1", "wr2", "wr3", "te")
+        ]
 
-    home_offensive_depth = depth_map.get(
-        (home_team_id, "OFF"),
-        []
-    )
-
-    away_defensive_depth = depth_map.get(
-        (away_team_id, "DEF"),
-        []
-    )
-
-    home_defensive_depth = depth_map.get(
-        (home_team_id, "DEF"),
-        []
-    )
-
-    away_special_teams_depth = depth_map.get(
-        (away_team_id, "ST"),
-        []
-    )
-
-    home_special_teams_depth = depth_map.get(
-        (home_team_id, "ST"),
-        []
-    )
-
-
-    league_power_rankings = get_league_power_rankings(
-        cursor,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    away_league_power = next(
-        (
-            team
-            for team in league_power_rankings
-            if team["team"] == away_team
-        ),
-        None
-    )
-
-    home_league_power = next(
-        (
-            team
-            for team in league_power_rankings
-            if team["team"] == home_team
-        ),
-        None
-    )
-
-
-    all_offensive_depth = (
-        away_offensive_depth
-        + home_offensive_depth
-    )
-
-    qb_player_ids = list({
-        player[2]
-        for player in all_offensive_depth
-        if (
-            player[1] == "QB"
-            and player[2] is not None
-        )
-    })
-
-    rb_player_ids = list({
-        player[2]
-        for player in all_offensive_depth
-        if (
-            player[1] == "RB"
-            and player[2] is not None
-        )
-    })
-
-    receiver_depth_player_ids = list({
-        player[2]
-        for player in all_offensive_depth
-        if (
-            player[1] in ("WR", "TE")
-            and player[2] is not None
-        )
-    })
-
-    qb_depth_profiles = get_qb_profiles(
-        cursor,
-        qb_player_ids,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    rb_depth_profiles = get_rb_profiles(
-        cursor,
-        rb_player_ids,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-    receiver_depth_profiles = get_receiving_profiles(
-        cursor,
-        receiver_depth_player_ids,
-        DISPLAY_SEASON,
-        game_date
-    )
-
-
-    def get_offensive_depth_profile(player):
-        player_id = player[2]
-        position = player[1]
-
-        if position == "QB":
-            return qb_depth_profiles.get(
-                player_id
+        receiver_player_ids = list({
+            receiver[2]
+            for receiver in (
+                away_receivers
+                + home_receivers
             )
+            if receiver[2] is not None
+        })
 
-        if position == "RB":
-            return rb_depth_profiles.get(
-                player_id
-            )
-
-        if position in ("WR", "TE"):
-            return receiver_depth_profiles.get(
-                player_id
-            )
-
-        return None
-
-
-    away_offensive_depth_profile_map = {
-        player[2]: get_offensive_depth_profile(
-            player
-        )
-        for player in away_offensive_depth
-    }
-
-    home_offensive_depth_profile_map = {
-        player[2]: get_offensive_depth_profile(
-            player
-        )
-        for player in home_offensive_depth
-    }
-
-    defensive_depth_player_ids = list({
-        player[2]
-        for player in (
-            away_defensive_depth
-            + home_defensive_depth
-        )
-        if player[2] is not None
-    })
-
-    defensive_depth_profiles = (
-        get_defensive_player_profiles(
+        receiver_profile_map = get_receiving_profiles(
             cursor,
-            defensive_depth_player_ids,
+            receiver_player_ids,
             DISPLAY_SEASON,
             game_date
         )
-    )
 
-    away_defensive_depth_profile_map = {
-        player[2]: defensive_depth_profiles.get(
-            player[2]
-        )
-        for player in away_defensive_depth
-    }
+        away_receiver_profiles = [
+            (
+                receiver,
+                receiver_profile_map.get(
+                    receiver[2]
+                )
+            )
+            for receiver in away_receivers
+        ]
 
-    home_defensive_depth_profile_map = {
-        player[2]: defensive_depth_profiles.get(
-            player[2]
-        )
-        for player in home_defensive_depth
-    }
+        home_receiver_profiles = [
+            (
+                receiver,
+                receiver_profile_map.get(
+                    receiver[2]
+                )
+            )
+            for receiver in home_receivers
+        ]
 
-    special_teams_depth_player_ids = list({
-        player[2]
-        for player in (
-            away_special_teams_depth
-            + home_special_teams_depth
-        )
-        if player[2] is not None
-    })
+        away_receiver_profile_map = {
+            receiver[2]: profile
+            for receiver, profile
+            in away_receiver_profiles
+        }
 
-    special_teams_depth_profiles = (
-        get_special_teams_profiles(
+        home_receiver_profile_map = {
+            receiver[2]: profile
+            for receiver, profile
+            in home_receiver_profiles
+        }
+
+        away_offensive_map = {
+                    starter[0]: starter
+                    for starter in away_offensive_starters
+                }
+
+        home_offensive_map = {
+            starter[0]: starter
+            for starter in home_offensive_starters
+        }
+
+        matchup_offensive_slots = [
+            slot
+            for slot in OFFENSIVE_DISPLAY_ORDER
+            if (
+                slot in away_offensive_map
+                or slot in home_offensive_map
+            )
+        ]
+
+        away_defensive_starters = get_defensive_starters(
             cursor,
-            special_teams_depth_player_ids,
+            away_team_id
+        )
+
+        home_defensive_starters = get_defensive_starters(
+            cursor,
+            home_team_id
+        )
+
+        away_defensive_map = {
+            starter[0]: starter
+            for starter in away_defensive_starters
+        }
+
+        home_defensive_map = {
+            starter[0]: starter
+            for starter in home_defensive_starters
+        }
+
+        matchup_defensive_slots = [
+            slot
+            for slot in DEFENSIVE_DISPLAY_ORDER
+            if (
+                slot in away_defensive_map
+                or slot in home_defensive_map
+            )
+        ]
+
+        defensive_player_ids = list({
+            starter[2]
+            for starter in (
+                away_defensive_starters
+                + home_defensive_starters
+            )
+            if starter[2] is not None
+        })
+
+        defensive_profile_map = (
+            get_defensive_player_profiles(
+                cursor,
+                defensive_player_ids,
+                DISPLAY_SEASON,
+                game_date
+            )
+        )
+
+        away_defensive_profile_map = {
+            starter[2]: defensive_profile_map.get(
+                starter[2]
+            )
+            for starter in away_defensive_starters
+        }
+
+        home_defensive_profile_map = {
+            starter[2]: defensive_profile_map.get(
+                starter[2]
+            )
+            for starter in home_defensive_starters
+        }
+
+
+        away_special_teams = get_special_teams_starters(
+            cursor,
+            away_team_id
+        )
+
+        home_special_teams = get_special_teams_starters(
+            cursor,
+            home_team_id
+        )
+
+        away_special_teams_map = {
+            starter[0]: starter
+            for starter in away_special_teams
+        }
+
+        home_special_teams_map = {
+            starter[0]: starter
+            for starter in home_special_teams
+        }
+
+        away_special_teams_profile_map = {}
+
+        for starter in away_special_teams:
+            player_id = starter[2]
+
+            away_special_teams_profile_map[player_id] = (
+                get_special_teams_profile(
+                    cursor,
+                    player_id,
+                    DISPLAY_SEASON,
+                    game_date
+                )
+            )
+
+
+        home_special_teams_profile_map = {}
+
+        for starter in home_special_teams:
+            player_id = starter[2]
+
+            home_special_teams_profile_map[player_id] = (
+                get_special_teams_profile(
+                    cursor,
+                    player_id,
+                    DISPLAY_SEASON,
+                    game_date
+                )
+            )
+
+        matchup_special_teams_slots = [
+            slot
+            for slot in SPECIAL_TEAMS_DISPLAY_ORDER
+            if (
+                slot in away_special_teams_map
+                or slot in home_special_teams_map
+            )
+        ]
+
+    if selected_game_section == "Players":
+        depth_map = get_depth_players_bulk(
+            cursor,
+            [
+                away_team_id,
+                home_team_id
+            ]
+        )
+
+        away_offensive_depth = depth_map.get(
+            (away_team_id, "OFF"),
+            []
+        )
+
+        home_offensive_depth = depth_map.get(
+            (home_team_id, "OFF"),
+            []
+        )
+
+        away_defensive_depth = depth_map.get(
+            (away_team_id, "DEF"),
+            []
+        )
+
+        home_defensive_depth = depth_map.get(
+            (home_team_id, "DEF"),
+            []
+        )
+
+        away_special_teams_depth = depth_map.get(
+            (away_team_id, "ST"),
+            []
+        )
+
+        home_special_teams_depth = depth_map.get(
+            (home_team_id, "ST"),
+            []
+        )
+
+
+        all_offensive_depth = (
+            away_offensive_depth
+            + home_offensive_depth
+        )
+
+        qb_player_ids = list({
+            player[2]
+            for player in all_offensive_depth
+            if (
+                player[1] == "QB"
+                and player[2] is not None
+            )
+        })
+
+        rb_player_ids = list({
+            player[2]
+            for player in all_offensive_depth
+            if (
+                player[1] == "RB"
+                and player[2] is not None
+            )
+        })
+
+        receiver_depth_player_ids = list({
+            player[2]
+            for player in all_offensive_depth
+            if (
+                player[1] in ("WR", "TE")
+                and player[2] is not None
+            )
+        })
+
+        qb_depth_profiles = get_qb_profiles(
+            cursor,
+            qb_player_ids,
             DISPLAY_SEASON,
             game_date
         )
-    )
 
-    away_special_teams_depth_profile_map = {
-        player[2]: special_teams_depth_profiles.get(
+        rb_depth_profiles = get_rb_profiles(
+            cursor,
+            rb_player_ids,
+            DISPLAY_SEASON,
+            game_date
+        )
+
+        receiver_depth_profiles = get_receiving_profiles(
+            cursor,
+            receiver_depth_player_ids,
+            DISPLAY_SEASON,
+            game_date
+        )
+
+
+        def get_offensive_depth_profile(player):
+            player_id = player[2]
+            position = player[1]
+
+            if position == "QB":
+                return qb_depth_profiles.get(
+                    player_id
+                )
+
+            if position == "RB":
+                return rb_depth_profiles.get(
+                    player_id
+                )
+
+            if position in ("WR", "TE"):
+                return receiver_depth_profiles.get(
+                    player_id
+                )
+
+            return None
+
+
+        away_offensive_depth_profile_map = {
+            player[2]: get_offensive_depth_profile(
+                player
+            )
+            for player in away_offensive_depth
+        }
+
+        home_offensive_depth_profile_map = {
+            player[2]: get_offensive_depth_profile(
+                player
+            )
+            for player in home_offensive_depth
+        }
+
+        defensive_depth_player_ids = list({
             player[2]
-        )
-        for player in away_special_teams_depth
-    }
+            for player in (
+                away_defensive_depth
+                + home_defensive_depth
+            )
+            if player[2] is not None
+        })
 
-    home_special_teams_depth_profile_map = {
-        player[2]: special_teams_depth_profiles.get(
+        defensive_depth_profiles = (
+            get_defensive_player_profiles(
+                cursor,
+                defensive_depth_player_ids,
+                DISPLAY_SEASON,
+                game_date
+            )
+        )
+
+        away_defensive_depth_profile_map = {
+            player[2]: defensive_depth_profiles.get(
+                player[2]
+            )
+            for player in away_defensive_depth
+        }
+
+        home_defensive_depth_profile_map = {
+            player[2]: defensive_depth_profiles.get(
+                player[2]
+            )
+            for player in home_defensive_depth
+        }
+
+        special_teams_depth_player_ids = list({
             player[2]
-        )
-        for player in home_special_teams_depth
-    }
+            for player in (
+                away_special_teams_depth
+                + home_special_teams_depth
+            )
+            if player[2] is not None
+        })
 
-
-    (
-        away_offensive_depth_map,
-        home_offensive_depth_map,
-        matchup_offensive_depth_rows
-    ) = get_matchup_depth_rows(
-        away_offensive_depth,
-        home_offensive_depth,
-        OFFENSIVE_DISPLAY_ORDER
-    )
-
-
-    (
-        away_defensive_depth_map,
-        home_defensive_depth_map,
-        matchup_defensive_depth_rows
-    ) = get_matchup_depth_rows(
-        away_defensive_depth,
-        home_defensive_depth,
-        DEFENSIVE_DISPLAY_ORDER
-    )
-
-
-    (
-        away_special_teams_depth_map,
-        home_special_teams_depth_map,
-        matchup_special_teams_depth_rows
-    ) = get_matchup_depth_rows(
-        away_special_teams_depth,
-        home_special_teams_depth,
-        SPECIAL_TEAMS_DISPLAY_ORDER
-    )
-
-    away_last_three_turnover_diff = None
-
-    if away_boxscore and away_defense:
-        away_last_three_turnover_diff = (
-            away_defense["last_three_takeaways"]
-            - away_boxscore["last_three_turnovers"]
+        special_teams_depth_profiles = (
+            get_special_teams_profiles(
+                cursor,
+                special_teams_depth_player_ids,
+                DISPLAY_SEASON,
+                game_date
+            )
         )
 
-    home_last_three_turnover_diff = None
+        away_special_teams_depth_profile_map = {
+            player[2]: special_teams_depth_profiles.get(
+                player[2]
+            )
+            for player in away_special_teams_depth
+        }
 
-    if home_boxscore and home_defense:
-        home_last_three_turnover_diff = (
-            home_defense["last_three_takeaways"]
-            - home_boxscore["last_three_turnovers"]
+        home_special_teams_depth_profile_map = {
+            player[2]: special_teams_depth_profiles.get(
+                player[2]
+            )
+            for player in home_special_teams_depth
+        }
+
+
+        (
+            away_offensive_depth_map,
+            home_offensive_depth_map,
+            matchup_offensive_depth_rows
+        ) = get_matchup_depth_rows(
+            away_offensive_depth,
+            home_offensive_depth,
+            OFFENSIVE_DISPLAY_ORDER
+        )
+
+
+        (
+            away_defensive_depth_map,
+            home_defensive_depth_map,
+            matchup_defensive_depth_rows
+        ) = get_matchup_depth_rows(
+            away_defensive_depth,
+            home_defensive_depth,
+            DEFENSIVE_DISPLAY_ORDER
+        )
+
+
+        (
+            away_special_teams_depth_map,
+            home_special_teams_depth_map,
+            matchup_special_teams_depth_rows
+        ) = get_matchup_depth_rows(
+            away_special_teams_depth,
+            home_special_teams_depth,
+            SPECIAL_TEAMS_DISPLAY_ORDER
         )
 
     if st.button("← Back to Schedule"):
@@ -1615,31 +1636,24 @@ if (
     st.divider()
 
 
-    (
-        overview_tab,
-        prediction_tab,
-        team_stats_tab,
-        players_tab,
-        matchup_tab,
-        game_stats_tab,
-        injuries_tab,
-        weather_tab,
-        betting_tab,
-        history_tab
-    ) = st.tabs([
-        "Overview",
-        "Prediction",
-        "Team Stats",
-        "Players",
-        "Matchup",
-        "Game Stats",
-        "Injuries",
-        "Weather",
-        "Betting",
-        "History"
-    ])
+    st.segmented_control(
+        "Game Section",
+        [
+            "Overview",
+            "Prediction",
+            "Team Stats",
+            "Players",
+            "Matchup",
+            "Game Stats",
+            "Injuries",
+            "Weather",
+            "Betting",
+            "History"
+        ],
+        key="game_section"
+    )
 
-    with overview_tab:
+    if selected_game_section == "Overview":
         st.subheader("Game Overview")
 
         # -------------------------
@@ -1770,7 +1784,7 @@ if (
                 "Current moneyline market unavailable."
             )
 
-    with prediction_tab:
+    if selected_game_section == "Prediction":
         st.subheader("Game Prediction")
 
         if not game_prediction:
@@ -1978,7 +1992,7 @@ if (
                     "moneyline odds are not available for this game."
                 )
 
-    with team_stats_tab:
+    if selected_game_section == "Team Stats":
         st.subheader("Team Stats")
 
         if (
@@ -1999,8 +2013,12 @@ if (
             scoring_rows = [
                 {
                     "Metric": "Games Played",
-                    away_team: away_scoring["games_played"],
-                    home_team: home_scoring["games_played"]
+                    away_team: str(
+                        away_scoring["games_played"]
+                    ),
+                    home_team: str(
+                        home_scoring["games_played"]
+                    )
                 },
                 {
                     "Metric": "Points / Game",
@@ -2248,30 +2266,60 @@ if (
                 f"have completed games in the {DISPLAY_SEASON} season."
             )
 
-    away_key_players = get_key_player_spotlights(
-        away_offensive_map,
-        away_defensive_map,
-        away_qb_profile,
-        away_qb[2] if away_qb else None,
-        away_rb_profile,
-        away_rb[2] if away_rb else None,
-        away_receiver_profile_map,
-        away_defensive_profile_map
-    )
+    if selected_game_section == "Players":
 
-    home_key_players = get_key_player_spotlights(
-        home_offensive_map,
-        home_defensive_map,
-        home_qb_profile,
-        home_qb[2] if home_qb else None,
-        home_rb_profile,
-        home_rb[2] if home_rb else None,
-        home_receiver_profile_map,
-        home_defensive_profile_map
-    )
+        away_key_players = get_key_player_spotlights(
+            away_offensive_map,
+            away_defensive_map,
+            away_qb_profile,
+            away_qb[2] if away_qb else None,
+            away_rb_profile,
+            away_rb[2] if away_rb else None,
+            away_receiver_profile_map,
+            away_defensive_profile_map
+        )
 
-    with players_tab:
+        home_key_players = get_key_player_spotlights(
+            home_offensive_map,
+            home_defensive_map,
+            home_qb_profile,
+            home_qb[2] if home_qb else None,
+            home_rb_profile,
+            home_rb[2] if home_rb else None,
+            home_receiver_profile_map,
+            home_defensive_profile_map
+        )
 
+    if selected_game_section in (
+        "Players",
+        "Matchup"
+    ):
+        league_power_rankings = get_league_power_rankings(
+            cursor,
+            DISPLAY_SEASON,
+            game_date
+        )
+
+        away_league_power = next(
+            (
+                team
+                for team in league_power_rankings
+                if team["team"] == away_team
+            ),
+            None
+        )
+
+        home_league_power = next(
+            (
+                team
+                for team in league_power_rankings
+                if team["team"] == home_team
+            ),
+            None
+        )
+
+
+    if selected_game_section == "Players":
         st.subheader("Key Player Spotlights")
 
         has_away_spotlights = any(
@@ -2693,7 +2741,7 @@ if (
                             st.markdown("**N/A**")
                             st.caption("No listed player")
 
-    with matchup_tab:
+    if selected_game_section == "Matchup":
 
         st.subheader("Power Ratings")
 
@@ -2809,7 +2857,7 @@ if (
             home_matchup_edges
         )
 
-    with game_stats_tab:
+    if selected_game_section == "Game Stats":
         st.subheader("Game Stats")
 
         if not away_game_team_stats or not home_game_team_stats:
@@ -3018,7 +3066,7 @@ if (
             home_game_player_stats
         )
 
-    with injuries_tab:
+    if selected_game_section == "Injuries":
         st.subheader("Injuries")
 
         away_injury_col, home_injury_col = st.columns(2)
@@ -3208,7 +3256,7 @@ if (
                                 f"No longer listed"
                             )
 
-    with weather_tab:
+    if selected_game_section == "Weather":
         st.subheader("Weather")
 
         st.markdown(f"### {venue}")
@@ -3239,7 +3287,7 @@ if (
             else:
                 display_weather_forecast(game_weather)
 
-    with betting_tab:
+    if selected_game_section == "Betting":
         st.subheader("Betting")
 
         if not game_betting:
@@ -3431,7 +3479,7 @@ if (
                 f"{game_betting['captured_at'].strftime('%b %d, %Y %I:%M %p')}"
             )
 
-    with history_tab:
+    if selected_game_section == "History":
         st.subheader("Head-to-Head")
 
         if head_to_head:
