@@ -4,6 +4,12 @@ An end-to-end NFL analytics application built with Python, PostgreSQL, and Strea
 
 The project collects and stores NFL data, transforms it into team and player analytics, and presents schedules, game details, matchup analysis, power rankings, injuries, weather, betting information, and probabilistic game predictions through an interactive dashboard.
 
+## Live Demo
+
+**[Launch the NFL Dashboard](https://sports-data-pipeline.streamlit.app)**
+
+Interactive NFL analytics dashboard featuring game predictions, matchup analysis, player statistics, power rankings, betting markets, injuries, weather, and historical data.
+
 ## Dashboard Preview
 
 ### Home
