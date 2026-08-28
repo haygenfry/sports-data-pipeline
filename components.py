@@ -1,5 +1,12 @@
 import streamlit as st
+import html
+import textwrap
 
+def render_stat_section_spacer():
+    st.markdown(
+        "<div style='height: 24px;'></div>",
+        unsafe_allow_html=True
+    )
 
 def render_offensive_player(
     starter,
@@ -458,6 +465,186 @@ def possessive(name):
 
     return f"{name}'s"
 
+def render_responsive_comparison_table(
+    headers,
+    rows,
+    mobile_labels=None
+):
+    """
+    Render a comparison table that stays tabular on desktop
+    and becomes compact stacked rows on mobile.
+
+    headers:
+        ["Metric", "49ers", "Rams"]
+
+    rows:
+        [
+            ["Total Yards", "407", "456"],
+            ["Passing Yards", "333", "378"],
+        ]
+
+    mobile_labels:
+        Optional shorter labels for mobile, excluding Metric.
+        Example: ["SF", "LAR"]
+    """
+
+    if mobile_labels is None:
+        mobile_labels = headers[1:]
+
+    header_html = "".join(
+        f"<th>{html.escape(str(header))}</th>"
+        for header in headers
+    )
+
+    desktop_rows = []
+
+    mobile_rows = []
+
+    for row in rows:
+        desktop_cells = "".join(
+            f"<td>{html.escape(str(value))}</td>"
+            for value in row
+        )
+
+        desktop_rows.append(
+            f"<tr>{desktop_cells}</tr>"
+        )
+
+        metric = html.escape(str(row[0]))
+
+        values_html = "".join(
+            f"""
+            <div class="responsive-comparison-mobile-value">
+                <span class="responsive-comparison-mobile-label">
+                    {html.escape(str(label))}
+                </span>
+                <span>
+                    {html.escape(str(value))}
+                </span>
+            </div>
+            """
+            for label, value in zip(
+                mobile_labels,
+                row[1:]
+            )
+        )
+
+        mobile_rows.append(
+            f"""
+            <div class="responsive-comparison-mobile-row">
+                <div class="responsive-comparison-mobile-metric">
+                    {metric}
+                </div>
+                <div class="responsive-comparison-mobile-values">
+                    {values_html}
+                </div>
+            </div>
+            """
+        )
+
+    html_content = f"""
+    <style>
+    html, body {{
+        margin: 0;
+        padding: 0;
+    }}
+
+    body {{
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                     sans-serif;
+        color: #31333F;
+    }}
+
+    :root {{
+        --table-cell-y: 8px;
+        --table-cell-x: 10px;
+        --mobile-row-y: 12px;
+        --mobile-metric-gap: 6px;
+        --mobile-column-gap: 12px;
+        --border-strong: rgba(128, 128, 128, 0.35);
+        --border-light: rgba(128, 128, 128, 0.18);
+    }}
+
+    .responsive-comparison-desktop {{
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+    }}
+
+    .responsive-comparison-desktop th {{
+        text-align: left;
+        padding: 0.55rem 0.7rem;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.35);
+    }}
+
+    .responsive-comparison-desktop td {{
+        padding: var(--table-cell-y) var(--table-cell-x);
+        border-bottom: 1px solid var(--border-light);
+        vertical-align: top;
+    }}
+
+    .responsive-comparison-mobile {{
+        display: none;
+    }}
+
+    @media (max-width: 640px) {{
+        .responsive-comparison-desktop {{
+            display: none;
+        }}
+
+        .responsive-comparison-mobile {{
+            display: block;
+        }}
+
+        .responsive-comparison-mobile-row {{
+            padding: var(--mobile-row-y) 0;
+            border-bottom: 1px solid var(--border-light);
+        }}
+
+        .responsive-comparison-mobile-metric {{
+            font-weight: 600;
+            margin-bottom: var(--mobile-metric-gap);
+        }}
+
+        .responsive-comparison-mobile-values {{
+            display: grid;
+            grid-template-columns: repeat(
+                {len(headers) - 1},
+                minmax(0, 1fr)
+            );
+            gap: var(--mobile-column-gap);
+        }}
+
+        .responsive-comparison-mobile-label {{
+            display: block;
+            font-size: 0.78rem;
+            opacity: 0.7;
+            margin-bottom: 0.1rem;
+        }}
+    }}
+    </style>
+
+    <table class="responsive-comparison-desktop">
+        <thead>
+            <tr>
+                {header_html}
+            </tr>
+        </thead>
+        <tbody>
+            {''.join(desktop_rows)}
+        </tbody>
+    </table>
+
+    <div class="responsive-comparison-mobile">
+        {''.join(mobile_rows)}
+    </div>
+    """
+
+    st.iframe(
+        html_content,
+        width="stretch",
+        height="content"
+    )
 
 def render_matchup_table(
     offense_team,
@@ -476,7 +663,7 @@ def render_matchup_table(
     st.caption(
         f"{possessive(offense_team)} offensive production compared with "
         f"{possessive(defense_team)} defensive performance entering this game."
-        )
+    )
 
     summary = build_matchup_summary(
         offense_team,
@@ -487,28 +674,6 @@ def render_matchup_table(
     if summary:
         st.markdown("#### Key Matchup Read")
         st.write(summary)
-
-    # -------------------------
-    # HEADER
-    # -------------------------
-
-    metric_col, offense_col, defense_col, read_col = st.columns(
-        [1.4, 1, 1, 1.4]
-    )
-
-    with metric_col:
-        st.markdown("**Metric**")
-
-    with offense_col:
-        st.markdown(f"**{offense_team} Offense**")
-
-    with defense_col:
-        st.markdown(f"**{defense_team} Defense**")
-
-    with read_col:
-        st.markdown("**Matchup Read**")
-
-    st.divider()
 
     rows = [
         (
@@ -562,6 +727,8 @@ def render_matchup_table(
         )
     ]
 
+    formatted_rows = []
+
     for (
         metric,
         offense_value,
@@ -570,44 +737,136 @@ def render_matchup_table(
         value_type
     ) in rows:
 
-        metric_col, offense_col, defense_col, read_col = st.columns(
-            [1.4, 1, 1, 1.4]
+        if value_type == "percent":
+            offense_display = f"{offense_value * 100:.1f}%"
+            defense_display = f"{defense_value * 100:.1f}% allowed"
+
+        elif value_type == "decimal":
+            offense_display = f"{offense_value:.2f}"
+            defense_display = f"{defense_value:.2f} allowed"
+
+        elif value_type == "turnovers":
+            offense_display = f"{offense_value:.2f} TO/G"
+            defense_display = f"{defense_value:.2f} TAKE/G"
+
+        else:
+            offense_display = f"{offense_value:.1f}"
+            defense_display = f"{defense_value:.1f} allowed"
+
+        formatted_rows.append(
+            [
+                metric,
+                offense_display,
+                defense_display,
+                matchup_read
+            ]
         )
 
-        with metric_col:
-            st.write(metric)
+    render_responsive_comparison_table(
+        headers=[
+            "Metric",
+            f"{offense_team} Offense",
+            f"{defense_team} Defense",
+            "Matchup Read"
+        ],
+        rows=formatted_rows,
+        mobile_labels=[
+            "Offense",
+            "Defense",
+            "Read"
+        ]
+    )
 
-        with offense_col:
+def render_box_score_table(headers, rows):
+    header_html = "".join(
+        f"<th>{html.escape(str(header))}</th>"
+        for header in headers
+    )
 
-            if value_type == "percent":
-                st.write(f"{offense_value * 100:.1f}%")
+    body_rows = []
 
-            elif value_type == "decimal":
-                st.write(f"{offense_value:.2f}")
+    for row in rows:
+        cells = "".join(
+            f"<td>{html.escape(str(value))}</td>"
+            for value in row
+        )
 
-            elif value_type == "turnovers":
-                st.write(f"{offense_value:.2f} TO/G")
+        body_rows.append(f"<tr>{cells}</tr>")
 
-            else:
-                st.write(f"{offense_value:.1f}")
+    html_content = f"""
+    <style>
+        body {{
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                         sans-serif;
+            color: #31333F;
+        }}
 
-        with defense_col:
+        .box-score-wrapper {{
+            width: 100%;
+            overflow-x: auto;
+        }}
 
-            if value_type == "percent":
-                st.write(f"{defense_value * 100:.1f}% allowed")
+        .box-score-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }}
 
-            elif value_type == "decimal":
-                st.write(f"{defense_value:.2f} allowed")
+        .box-score-table th {{
+            text-align: left;
+            font-weight: 600;
+            padding: 8px 10px;
+            border-bottom: 1px solid #c7c7c7;
+            white-space: nowrap;
+        }}
 
-            elif value_type == "turnovers":
-                st.write(f"{defense_value:.2f} TAKE/G")
+        .box-score-table td {{
+            padding: 8px 10px;
+            border-bottom: 1px solid #e6e6e6;
+            white-space: nowrap;
+        }}
 
-            else:
-                st.write(f"{defense_value:.1f} allowed")
+        .box-score-table th:first-child,
+        .box-score-table td:first-child {{
+            min-width: 130px;
+        }}
 
-        with read_col:
-            st.write(matchup_read)
+        @media (max-width: 640px) {{
+            .box-score-table {{
+                font-size: 14px;
+                min-width: 560px;
+            }}
 
+            .box-score-table th,
+            .box-score-table td {{
+                padding: 7px 8px;
+            }}
+
+            .box-score-table th:first-child,
+            .box-score-table td:first-child {{
+                min-width: 120px;
+            }}
+        }}
+    </style>
+
+    <div class="box-score-wrapper">
+        <table class="box-score-table">
+            <thead>
+                <tr>{header_html}</tr>
+            </thead>
+            <tbody>
+                {''.join(body_rows)}
+            </tbody>
+        </table>
+    </div>
+    """
+
+    st.iframe(
+        html_content,
+        width="stretch",
+        height="content"
+    )
 
 def render_passing_box_score(
     team_name,
@@ -624,8 +883,6 @@ def render_passing_box_score(
 
     st.markdown(f"#### {team_name} Passing")
 
-    header_cols = st.columns([2, 1, 1, 1, 1, 1, 1, 1])
-
     headers = [
         "Player",
         "C/ATT",
@@ -637,13 +894,9 @@ def render_passing_box_score(
         "RTG"
     ]
 
-    for col, header in zip(header_cols, headers):
-        col.markdown(f"**{header}**")
+    rows = []
 
     for player in passers:
-
-        cols = st.columns([2, 1, 1, 1, 1, 1, 1, 1])
-
         values = [
             player["player_name"],
             player["completions_attempts"],
@@ -655,8 +908,9 @@ def render_passing_box_score(
             player["passer_rating"]
         ]
 
-        for index, (col, value) in enumerate(zip(cols, values)):
+        formatted_values = []
 
+        for index, value in enumerate(values):
             if value is None:
                 display_value = "—"
 
@@ -666,7 +920,11 @@ def render_passing_box_score(
             else:
                 display_value = str(value)
 
-            col.write(display_value)
+            formatted_values.append(display_value)
+
+        rows.append(formatted_values)
+
+    render_box_score_table(headers, rows)
 
 
 def render_rushing_box_score(
@@ -690,8 +948,6 @@ def render_rushing_box_score(
 
     st.markdown(f"#### {team_name} Rushing")
 
-    header_cols = st.columns([2, 1, 1, 1, 1, 1])
-
     headers = [
         "Player",
         "CAR",
@@ -701,13 +957,9 @@ def render_rushing_box_score(
         "LONG"
     ]
 
-    for col, header in zip(header_cols, headers):
-        col.markdown(f"**{header}**")
+    rows = []
 
     for player in rushers:
-
-        cols = st.columns([2, 1, 1, 1, 1, 1])
-
         values = [
             player["player_name"],
             player["rushing_attempts"],
@@ -717,8 +969,9 @@ def render_rushing_box_score(
             player["long_rushing"]
         ]
 
-        for index, (col, value) in enumerate(zip(cols, values)):
+        formatted_values = []
 
+        for index, value in enumerate(values):
             if value is None:
                 display_value = "—"
 
@@ -728,7 +981,11 @@ def render_rushing_box_score(
             else:
                 display_value = str(value)
 
-            col.write(display_value)
+            formatted_values.append(display_value)
+
+        rows.append(formatted_values)
+
+    render_box_score_table(headers, rows)
 
 
 def render_receiving_box_score(
@@ -761,10 +1018,6 @@ def render_receiving_box_score(
 
     st.markdown(f"#### {team_name} Receiving")
 
-    header_cols = st.columns(
-        [2, 1, 1, 1, 1, 1, 1]
-    )
-
     headers = [
         "Player",
         "REC",
@@ -775,15 +1028,9 @@ def render_receiving_box_score(
         "LONG"
     ]
 
-    for col, header in zip(header_cols, headers):
-        col.markdown(f"**{header}**")
+    rows = []
 
     for player in receivers:
-
-        cols = st.columns(
-            [2, 1, 1, 1, 1, 1, 1]
-        )
-
         values = [
             player["player_name"],
             player["receptions"],
@@ -794,10 +1041,9 @@ def render_receiving_box_score(
             player["long_reception"]
         ]
 
-        for index, (col, value) in enumerate(
-            zip(cols, values)
-        ):
+        formatted_values = []
 
+        for index, value in enumerate(values):
             if value is None:
                 display_value = "—"
 
@@ -807,7 +1053,11 @@ def render_receiving_box_score(
             else:
                 display_value = str(value)
 
-            col.write(display_value)
+            formatted_values.append(display_value)
+
+        rows.append(formatted_values)
+
+    render_box_score_table(headers, rows)
 
 
 def render_defensive_box_score(
@@ -844,10 +1094,6 @@ def render_defensive_box_score(
 
     st.markdown(f"#### {team_name} Defense")
 
-    header_cols = st.columns(
-        [2, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-    )
-
     headers = [
         "Player",
         "TOT",
@@ -861,15 +1107,9 @@ def render_defensive_box_score(
         "TD"
     ]
 
-    for col, header in zip(header_cols, headers):
-        col.markdown(f"**{header}**")
+    rows = []
 
     for player in defenders:
-
-        cols = st.columns(
-            [2, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        )
-
         values = [
             player["player_name"],
             player["total_tackles"],
@@ -883,26 +1123,28 @@ def render_defensive_box_score(
             player["defensive_touchdowns"]
         ]
 
-        for index, (col, value) in enumerate(
-            zip(cols, values)
-        ):
+        formatted_values = []
+
+        for index, value in enumerate(values):
             if value is None:
                 display_value = "0"
 
             elif index in (3, 4):
                 number = float(value)
-
-                if number.is_integer():
-                    display_value = str(int(number))
-                else:
-                    display_value = f"{number:.1f}"
+                display_value = (
+                    str(int(number))
+                    if number.is_integer()
+                    else f"{number:.1f}"
+                )
 
             else:
                 display_value = str(value)
 
-            col.write(display_value)
+            formatted_values.append(display_value)
 
+        rows.append(formatted_values)
 
+    render_box_score_table(headers, rows)
 def render_kicking_box_score(
     team_name,
     player_stats
@@ -919,8 +1161,6 @@ def render_kicking_box_score(
 
     st.markdown(f"#### {team_name} Kicking")
 
-    header_cols = st.columns([2, 1, 1, 1, 1, 1])
-
     headers = [
         "Player",
         "FG",
@@ -930,13 +1170,9 @@ def render_kicking_box_score(
         "PTS"
     ]
 
-    for col, header in zip(header_cols, headers):
-        col.markdown(f"**{header}**")
+    rows = []
 
     for player in kickers:
-
-        cols = st.columns([2, 1, 1, 1, 1, 1])
-
         fg_pct = player["field_goal_pct"]
 
         values = [
@@ -952,10 +1188,12 @@ def render_kicking_box_score(
             player["total_kicking_points"]
         ]
 
-        for col, value in zip(cols, values):
-            col.write("—" if value is None else str(value))
+        rows.append([
+            "—" if value is None else str(value)
+            for value in values
+        ])
 
-
+    render_box_score_table(headers, rows)
 def render_punting_box_score(
     team_name,
     player_stats
@@ -972,8 +1210,6 @@ def render_punting_box_score(
 
     st.markdown(f"#### {team_name} Punting")
 
-    header_cols = st.columns([2, 1, 1, 1, 1, 1, 1])
-
     headers = [
         "Player",
         "PUNTS",
@@ -984,13 +1220,9 @@ def render_punting_box_score(
         "LONG"
     ]
 
-    for col, header in zip(header_cols, headers):
-        col.markdown(f"**{header}**")
+    rows = []
 
     for player in punters:
-
-        cols = st.columns([2, 1, 1, 1, 1, 1, 1])
-
         avg = player["gross_avg_punt_yards"]
 
         values = [
@@ -1003,10 +1235,12 @@ def render_punting_box_score(
             player["long_punt"]
         ]
 
-        for col, value in zip(cols, values):
-            col.write("—" if value is None else str(value))
+        rows.append([
+            "—" if value is None else str(value)
+            for value in values
+        ])
 
-
+    render_box_score_table(headers, rows)
 def render_return_box_score(
     team_name,
     player_stats
@@ -1025,10 +1259,6 @@ def render_return_box_score(
 
     st.markdown(f"#### {team_name} Returns")
 
-    header_cols = st.columns(
-        [2, 1, 1, 1, 1, 1, 1, 1, 1]
-    )
-
     headers = [
         "Player",
         "KR",
@@ -1041,43 +1271,28 @@ def render_return_box_score(
         "TD"
     ]
 
-    for col, header in zip(header_cols, headers):
-        col.markdown(f"**{header}**")
+    rows = []
 
     for player in returners:
-
-        cols = st.columns(
-            [2, 1, 1, 1, 1, 1, 1, 1, 1]
-        )
-
         kr_avg = player["yards_per_kick_return"]
         pr_avg = player["yards_per_punt_return"]
 
-        values = [
-            player["player_name"],
-            player["kick_returns"] or 0,
-            player["kick_return_yards"] or 0,
-            (
-                f"{float(kr_avg):.1f}"
-                if kr_avg is not None
-                else "—"
-            ),
-            player["long_kick_return"] or 0,
-            player["punt_returns"] or 0,
-            player["punt_return_yards"] or 0,
-            (
-                f"{float(pr_avg):.1f}"
-                if pr_avg is not None
-                else "—"
-            ),
-            (player["kick_return_touchdowns"] or 0)
-            + (player["punt_return_touchdowns"] or 0)
-        ]
+        rows.append([
+            str(player["player_name"]),
+            str(player["kick_returns"] or 0),
+            str(player["kick_return_yards"] or 0),
+            f"{float(kr_avg):.1f}" if kr_avg is not None else "—",
+            str(player["long_kick_return"] or 0),
+            str(player["punt_returns"] or 0),
+            str(player["punt_return_yards"] or 0),
+            f"{float(pr_avg):.1f}" if pr_avg is not None else "—",
+            str(
+                (player["kick_return_touchdowns"] or 0)
+                + (player["punt_return_touchdowns"] or 0)
+            )
+        ])
 
-        for col, value in zip(cols, values):
-            col.write(str(value))
-
-
+    render_box_score_table(headers, rows)
 def render_fumbles_box_score(
     team_name,
     player_stats
@@ -1104,30 +1319,22 @@ def render_fumbles_box_score(
 
     st.markdown(f"#### {team_name} Fumbles")
 
-    header_cols = st.columns([2, 1, 1])
-
     headers = [
         "Player",
         "FUM",
         "LOST"
     ]
 
-    for col, header in zip(header_cols, headers):
-        col.markdown(f"**{header}**")
-
-    for player in fumblers:
-
-        cols = st.columns([2, 1, 1])
-
-        values = [
+    rows = [
+        [
             player["player_name"],
             player["fumbles"] or 0,
             player["fumbles_lost"] or 0
         ]
+        for player in fumblers
+    ]
 
-        for col, value in zip(cols, values):
-            col.write(str(value))
-
+    render_box_score_table(headers, rows)
 
 def get_weather_description(weather_code):
     descriptions = {

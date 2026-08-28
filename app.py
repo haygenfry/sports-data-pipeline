@@ -27,6 +27,7 @@ from analytics import (
 )
 
 from components import (
+    render_stat_section_spacer,
     render_offensive_player,
     render_defensive_player,
     render_special_teams_player,
@@ -34,6 +35,7 @@ from components import (
     build_matchup_summary,
     possessive,
     render_matchup_table,
+    render_responsive_comparison_table,
     render_passing_box_score,
     render_rushing_box_score,
     render_receiving_box_score,
@@ -1490,7 +1492,7 @@ if (
             SPECIAL_TEAMS_DISPLAY_ORDER
         )
 
-    if st.button("← Back to Schedule"):
+    if st.button("← Back to Schedule", key="back_to_schedule_1"):
         st.session_state["selected_game"] = None
         st.session_state["page"] = "schedule"
         st.rerun()
@@ -2868,21 +2870,6 @@ if (
                 f"### {away_team} vs {home_team}"
             )
 
-            metric_col, away_col, home_col = st.columns(
-                [1.5, 1, 1]
-            )
-
-            with metric_col:
-                st.markdown("**Metric**")
-
-            with away_col:
-                st.markdown(f"**{away_team}**")
-
-            with home_col:
-                st.markdown(f"**{home_team}**")
-
-            st.divider()
-
             team_stat_rows = [
                 (
                     "Total Yards",
@@ -2931,42 +2918,56 @@ if (
                 )
             ]
 
+            formatted_team_stat_rows = []
+
             for metric, away_value, home_value in team_stat_rows:
 
-                metric_col, away_col, home_col = st.columns(
-                    [1.5, 1, 1]
+                if metric == "Yards / Play":
+                    away_display = (
+                        f"{away_value:.2f}"
+                        if away_value is not None
+                        else "N/A"
+                    )
+
+                    home_display = (
+                        f"{home_value:.2f}"
+                        if home_value is not None
+                        else "N/A"
+                    )
+
+                else:
+                    away_display = (
+                        str(away_value)
+                        if away_value is not None
+                        else "N/A"
+                    )
+
+                    home_display = (
+                        str(home_value)
+                        if home_value is not None
+                        else "N/A"
+                    )
+
+                formatted_team_stat_rows.append(
+                    [
+                        metric,
+                        away_display,
+                        home_display
+                    ]
                 )
 
-                with metric_col:
-                    st.write(metric)
-
-                with away_col:
-                    if metric == "Yards / Play":
-                        st.write(
-                            f"{away_value:.2f}"
-                            if away_value is not None
-                            else "N/A"
-                        )
-                    else:
-                        st.write(
-                            away_value
-                            if away_value is not None
-                            else "N/A"
-                        )
-
-                with home_col:
-                    if metric == "Yards / Play":
-                        st.write(
-                            f"{home_value:.2f}"
-                            if home_value is not None
-                            else "N/A"
-                        )
-                    else:
-                        st.write(
-                            home_value
-                            if home_value is not None
-                            else "N/A"
-                        )
+            render_responsive_comparison_table(
+                headers=[
+                    "Metric",
+                    away_team,
+                    home_team
+                ],
+                rows=formatted_team_stat_rows,
+                mobile_labels=[
+                    away_team,
+                    home_team
+                ]
+            )
 
         st.divider()
         st.subheader("Player Box Score")
@@ -2981,7 +2982,7 @@ if (
             home_game_player_stats
         )
 
-        st.divider()
+        render_stat_section_spacer()
 
         render_rushing_box_score(
             away_team,
@@ -2993,7 +2994,7 @@ if (
             home_game_player_stats
         )
 
-        st.divider()
+        render_stat_section_spacer()
 
         render_receiving_box_score(
             away_team,
@@ -3005,7 +3006,7 @@ if (
             home_game_player_stats
         )
 
-        st.divider()
+        render_stat_section_spacer()
 
         render_fumbles_box_score(
             away_team,
@@ -3017,7 +3018,7 @@ if (
             home_game_player_stats
         )
 
-        st.divider()
+        render_stat_section_spacer()
 
         render_defensive_box_score(
             away_team,
@@ -3042,7 +3043,7 @@ if (
             home_game_player_stats
         )
 
-        st.divider()
+        render_stat_section_spacer()
 
         render_punting_box_score(
             away_team,
@@ -3054,7 +3055,7 @@ if (
             home_game_player_stats
         )
 
-        st.divider()
+        render_stat_section_spacer()
 
         render_return_box_score(
             away_team,
