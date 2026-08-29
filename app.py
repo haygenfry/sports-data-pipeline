@@ -65,7 +65,6 @@ from data import (
     get_rb_profiles,
     get_receiving_profiles,
     get_defensive_player_profiles,
-    get_special_teams_profile,
     get_special_teams_profiles,
     get_depth_players_bulk,
     get_league_matchup_baselines,
@@ -1227,34 +1226,37 @@ if (
             for starter in home_special_teams
         }
 
-        away_special_teams_profile_map = {}
-
-        for starter in away_special_teams:
-            player_id = starter[2]
-
-            away_special_teams_profile_map[player_id] = (
-                get_special_teams_profile(
-                    cursor,
-                    player_id,
-                    DISPLAY_SEASON,
-                    game_date
-                )
+        special_teams_player_ids = list({
+            starter[2]
+            for starter in (
+                away_special_teams
+                + home_special_teams
             )
+            if starter[2] is not None
+        })
 
-
-        home_special_teams_profile_map = {}
-
-        for starter in home_special_teams:
-            player_id = starter[2]
-
-            home_special_teams_profile_map[player_id] = (
-                get_special_teams_profile(
-                    cursor,
-                    player_id,
-                    DISPLAY_SEASON,
-                    game_date
-                )
+        special_teams_profile_map = (
+            get_special_teams_profiles(
+                cursor,
+                special_teams_player_ids,
+                DISPLAY_SEASON,
+                game_date
             )
+        )
+
+        away_special_teams_profile_map = {
+            starter[2]: special_teams_profile_map.get(
+                starter[2]
+            )
+            for starter in away_special_teams
+        }
+
+        home_special_teams_profile_map = {
+            starter[2]: special_teams_profile_map.get(
+                starter[2]
+            )
+            for starter in home_special_teams
+        }
 
         matchup_special_teams_slots = [
             slot
