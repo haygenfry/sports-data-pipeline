@@ -90,7 +90,7 @@ LIVE_REFRESH_ENABLED = (
     == "true"
 )
 
-DISPLAY_SEASON = 2025
+DISPLAY_SEASON = 2026
 
 TEAM_ABBREVIATIONS = {
     "Arizona Cardinals": "ARI",
@@ -1986,8 +1986,8 @@ if (
         else:
             if game_prediction is None:
                 st.info(
-                    "Model comparison will populate once enough "
-                    "2026 game data is available to generate a prediction."
+                    f"Model comparison will populate once enough "
+                    f"{DISPLAY_SEASON} game data is available to generate a prediction."
                 )
 
             else:
