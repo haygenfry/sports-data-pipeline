@@ -19,7 +19,7 @@ cursor.execute(
     """
     SELECT game_id
     FROM nfl_games
-    WHERE season = 2025
+    WHERE season = 2026
       AND completed = TRUE
     ORDER BY game_date;
     """

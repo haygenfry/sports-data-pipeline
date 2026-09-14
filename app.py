@@ -1,3 +1,4 @@
+from datetime import timedelta
 from db import get_connection
 import os
 from dotenv import load_dotenv
@@ -572,6 +573,12 @@ if (
         home_streak
     ) = selected_game
 
+    profile_game_date = (
+        game_date + timedelta(seconds=1)
+        if completed
+        else game_date
+    )
+
     if "game_section" not in st.session_state:
         st.session_state["game_section"] = "Overview"
 
@@ -581,14 +588,14 @@ if (
         cursor,
         away_team_id,
         DISPLAY_SEASON,
-        game_date
+        profile_game_date
     )
 
     home_last_three = get_last_three(
         cursor,
         home_team_id,
         DISPLAY_SEASON,
-        game_date
+        profile_game_date
     )
 
     head_to_head = None
@@ -611,14 +618,14 @@ if (
             cursor,
             away_team_id,
             DISPLAY_SEASON,
-            game_date
+            profile_game_date
         )
 
         home_scoring = get_team_scoring_profile(
             cursor,
             home_team_id,
             DISPLAY_SEASON,
-            game_date
+            profile_game_date
         )
 
         away_current_games = (
@@ -645,28 +652,28 @@ if (
             cursor,
             away_team_id,
             DISPLAY_SEASON,
-            game_date
+            profile_game_date
         )
 
         home_boxscore = get_team_boxscore_profile(
             cursor,
             home_team_id,
             DISPLAY_SEASON,
-            game_date
+            profile_game_date
         )
 
         away_defense = get_team_defensive_profile(
             cursor,
             away_team_id,
             DISPLAY_SEASON,
-            game_date
+            profile_game_date
         )
 
         home_defense = get_team_defensive_profile(
             cursor,
             home_team_id,
             DISPLAY_SEASON,
-            game_date
+            profile_game_date
         )
 
         previous_season = DISPLAY_SEASON - 1
