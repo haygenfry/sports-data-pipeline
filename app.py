@@ -954,7 +954,8 @@ if (
 
     if selected_game_section in (
         "Overview",
-        "Betting"
+        "Betting",
+        "Prediction"
     ):
         game_betting = get_latest_betting_snapshot(
             cursor,
