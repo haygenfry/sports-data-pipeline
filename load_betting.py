@@ -2,6 +2,8 @@ import requests
 from datetime import datetime, timezone
 from db import get_connection
 
+SEASON = 2026
+WEEK = 2
 
 summary_url = (
     "https://site.api.espn.com/apis/site/v2/"
@@ -17,19 +19,28 @@ cursor = connection.cursor()
 # UPCOMING 2026 GAMES
 # -------------------------
 
+# -------------------------
+# UPCOMING GAMES FOR WEEK
+# -------------------------
+
 cursor.execute(
     """
     SELECT game_id
     FROM nfl_games
-    WHERE season = 2026
+    WHERE season = %s
+      AND week = %s
       AND completed = FALSE
     ORDER BY game_date;
-    """
+    """,
+    (SEASON, WEEK)
 )
 
 game_ids = [row[0] for row in cursor.fetchall()]
 
-print(f"Found {len(game_ids)} upcoming games")
+print(
+    f"Found {len(game_ids)} upcoming games "
+    f"for {SEASON} Week {WEEK}"
+)
 
 
 # -------------------------

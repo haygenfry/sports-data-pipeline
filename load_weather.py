@@ -2,6 +2,9 @@ import requests
 from datetime import datetime, timezone
 from db import get_connection
 
+SEASON = 2026
+WEEK = 2
+
 forecast_url = "https://api.open-meteo.com/v1/forecast"
 
 connection = get_connection()
@@ -17,18 +20,23 @@ cursor.execute(
         venue_longitude,
         venue_timezone
     FROM nfl_games
-    WHERE season = 2026
+    WHERE season = %s
+      AND week = %s
       AND completed = FALSE
       AND venue_latitude IS NOT NULL
       AND venue_longitude IS NOT NULL
       AND venue_timezone IS NOT NULL
     ORDER BY game_date;
-    """
+    """,
+    (SEASON, WEEK)
 )
 
 games = cursor.fetchall()
 
-print(f"Found {len(games)} upcoming games")
+print(
+    f"Found {len(games)} upcoming games "
+    f"for {SEASON} Week {WEEK}"
+)
 
 
 insert_sql = """

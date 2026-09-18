@@ -1,6 +1,9 @@
 import requests
 from db import get_connection
 
+SEASON = 2026
+WEEK = 2
+
 summary_url = (
     "https://site.api.espn.com/apis/site/v2/"
     "sports/football/nfl/summary"
@@ -19,15 +22,20 @@ cursor.execute(
     """
     SELECT game_id
     FROM nfl_games
-    WHERE season = 2026
+    WHERE season = %s
+      AND week = %s
       AND completed = TRUE
     ORDER BY game_date;
-    """
+    """,
+    (SEASON, WEEK)
 )
 
 game_ids = [row[0] for row in cursor.fetchall()]
 
-print(f"Found {len(game_ids)} completed games")
+print(
+    f"Found {len(game_ids)} completed games "
+    f"for {SEASON} Week {WEEK}"
+)
 
 
 column_mapping = {
