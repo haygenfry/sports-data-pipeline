@@ -57,6 +57,8 @@ from data import (
     get_team_scoring_profile,
     get_team_boxscore_profile,
     get_team_defensive_profile,
+    get_matchup_profile_rows_bulk,
+    build_matchup_profiles_from_bulk_rows,
     get_offensive_starters,
     get_defensive_starters,
     get_special_teams_starters,
@@ -260,7 +262,246 @@ SPECIAL_TEAMS_DISPLAY_ORDER = [
     "ls"
 ]
 
+def get_home_game_prediction(
+    cursor,
+    away_team_id,
+    home_team_id,
+    game_date,
+    season
+):
+    away_scoring = get_team_scoring_profile(
+        cursor,
+        away_team_id,
+        season,
+        game_date
+    )
+
+    home_scoring = get_team_scoring_profile(
+        cursor,
+        home_team_id,
+        season,
+        game_date
+    )
+
+    away_current_games = (
+        away_scoring["games_played"]
+        if away_scoring
+        else 0
+    )
+
+    home_current_games = (
+        home_scoring["games_played"]
+        if home_scoring
+        else 0
+    )
+
+    away_blend_weights = get_season_blend_weights(
+        away_current_games
+    )
+
+    home_blend_weights = get_season_blend_weights(
+        home_current_games
+    )
+
+    away_boxscore = get_team_boxscore_profile(
+        cursor,
+        away_team_id,
+        season,
+        game_date
+    )
+
+    home_boxscore = get_team_boxscore_profile(
+        cursor,
+        home_team_id,
+        season,
+        game_date
+    )
+
+    away_defense = get_team_defensive_profile(
+        cursor,
+        away_team_id,
+        season,
+        game_date
+    )
+
+    home_defense = get_team_defensive_profile(
+        cursor,
+        home_team_id,
+        season,
+        game_date
+    )
+
+    previous_season = season - 1
+
+    away_previous_scoring = get_team_scoring_profile(
+        cursor,
+        away_team_id,
+        previous_season,
+        game_date
+    )
+
+    home_previous_scoring = get_team_scoring_profile(
+        cursor,
+        home_team_id,
+        previous_season,
+        game_date
+    )
+
+    away_previous_boxscore = get_team_boxscore_profile(
+        cursor,
+        away_team_id,
+        previous_season,
+        game_date
+    )
+
+    home_previous_boxscore = get_team_boxscore_profile(
+        cursor,
+        home_team_id,
+        previous_season,
+        game_date
+    )
+
+    away_previous_defense = get_team_defensive_profile(
+        cursor,
+        away_team_id,
+        previous_season,
+        game_date
+    )
+
+    home_previous_defense = get_team_defensive_profile(
+        cursor,
+        home_team_id,
+        previous_season,
+        game_date
+    )
+
+    away_scoring_blended = blend_profile(
+        away_previous_scoring,
+        away_scoring,
+        away_blend_weights["previous_season"],
+        away_blend_weights["current_season"]
+    )
+
+    home_scoring_blended = blend_profile(
+        home_previous_scoring,
+        home_scoring,
+        home_blend_weights["previous_season"],
+        home_blend_weights["current_season"]
+    )
+
+    away_boxscore_blended = blend_profile(
+        away_previous_boxscore,
+        away_boxscore,
+        away_blend_weights["previous_season"],
+        away_blend_weights["current_season"]
+    )
+
+    home_boxscore_blended = blend_profile(
+        home_previous_boxscore,
+        home_boxscore,
+        home_blend_weights["previous_season"],
+        home_blend_weights["current_season"]
+    )
+
+    away_defense_blended = blend_profile(
+        away_previous_defense,
+        away_defense,
+        away_blend_weights["previous_season"],
+        away_blend_weights["current_season"]
+    )
+
+    home_defense_blended = blend_profile(
+        home_previous_defense,
+        home_defense,
+        home_blend_weights["previous_season"],
+        home_blend_weights["current_season"]
+    )
+
+    away_offense_vs_home_defense = get_matchup_comparison(
+        away_boxscore_blended,
+        home_defense_blended
+    )
+
+    home_offense_vs_away_defense = get_matchup_comparison(
+        home_boxscore_blended,
+        away_defense_blended
+    )
+
+    away_power_rating = get_team_power_rating(
+        away_scoring_blended,
+        away_boxscore_blended,
+        away_defense_blended
+    )
+
+    home_power_rating = get_team_power_rating(
+        home_scoring_blended,
+        home_boxscore_blended,
+        home_defense_blended
+    )
+
+    league_matchup_baselines = get_league_matchup_baselines(
+        cursor,
+        season,
+        game_date
+    )
+
+    away_matchup_edges = get_matchup_edges(
+        away_offense_vs_home_defense,
+        league_matchup_baselines
+    )
+
+    home_matchup_edges = get_matchup_edges(
+        home_offense_vs_away_defense,
+        league_matchup_baselines
+    )
+
+    matchup_prediction_adjustment = (
+        get_matchup_prediction_adjustment(
+            away_matchup_edges,
+            home_matchup_edges
+        )
+    )
+
+    recent_form_adjustment = get_recent_form_adjustment(
+        away_scoring,
+        home_scoring,
+        away_boxscore,
+        home_boxscore,
+        away_defense,
+        home_defense
+    )
+
+    raw_prediction_edge = get_raw_prediction_edge(
+        away_power_rating,
+        home_power_rating,
+        matchup_prediction_adjustment,
+        recent_form_adjustment
+    )
+
+    return get_v2_win_probability(
+        raw_prediction_edge["power_edge"]
+        if raw_prediction_edge
+        else None,
+
+        raw_prediction_edge["matchup_edge"]
+        if raw_prediction_edge
+        else None,
+
+        raw_prediction_edge["recent_form_edge"]
+        if raw_prediction_edge
+        else None
+    )
+
+
 connection = get_connection()
+
+st.set_page_config(
+    page_title="NFL Dashboard",
+    layout="wide"
+)
+
+if "selected_week" not in st.session_state:
+    st.session_state["selected_week"] = 1
 
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
@@ -268,185 +509,48 @@ if "page" not in st.session_state:
 if "selected_game" not in st.session_state:
     st.session_state["selected_game"] = None
 
+if st.session_state["page"] != "home":
 
-nav_home, nav_schedule, nav_power = st.columns(3)
+    nav_home, nav_schedule, nav_power = st.columns(3)
 
-with nav_home:
-    if st.button(
-        "Home",
-        key="nav_home",
-        width="stretch"
-    ):
-        st.session_state["page"] = "home"
-        st.session_state["selected_game"] = None
-        st.rerun()
+    with nav_home:
+        if st.button(
+            "Home",
+            key="nav_home",
+            width="stretch"
+        ):
+            st.session_state["page"] = "home"
+            st.session_state["selected_game"] = None
+            st.rerun()
 
-with nav_schedule:
-    if st.button(
-        "Schedule",
-        key="nav_schedule",
-        width="stretch"
-    ):
-        st.session_state["page"] = "schedule"
-        st.session_state["selected_game"] = None
-        st.rerun()
+    with nav_schedule:
+        if st.button(
+            "Schedule",
+            key="nav_schedule",
+            width="stretch"
+        ):
+            st.session_state["page"] = "schedule"
+            st.session_state["selected_game"] = None
+            st.rerun()
 
-with nav_power:
-    if st.button(
-        "Power Rankings",
-        key="nav_power_rankings",
-        width="stretch"
-    ):
-        st.session_state["page"] = "power_rankings"
-        st.session_state["selected_game"] = None
-        st.rerun()
-
-if "selected_week" not in st.session_state:
-    st.session_state["selected_week"] = 1
+    with nav_power:
+        if st.button(
+            "Power Rankings",
+            key="nav_power_rankings",
+            width="stretch"
+        ):
+            st.session_state["page"] = "power_rankings"
+            st.session_state["selected_game"] = None
+            st.rerun()
 
 # -------------------------
 # HOME PAGE
 # -------------------------
 
 if st.session_state["page"] == "home":
+    selected_week = st.session_state["selected_week"]
 
-    st.title("NFL Dashboard")
-
-    st.caption(
-        "Game predictions, matchup analysis, power ratings, "
-        "player spotlights, betting markets, and live NFL data."
-    )
-
-    st.divider()
-
-    if LIVE_REFRESH_ENABLED:
-        st.caption(
-            "Live data refresh enabled."
-        )
-    else:
-        st.caption(
-            "Portfolio preview · Data is shown from the latest available snapshot."
-        )
-
-        st.divider()
-
-    # -------------------------
-    # QUICK ACCESS
-    # -------------------------
-
-    st.subheader("Explore")
-
-    schedule_col, rankings_col = st.columns(2)
-
-    with schedule_col:
-        with st.container(border=True):
-            st.markdown("### Weekly Schedule")
-            st.write(
-                "Browse every matchup by week and open full "
-                "game previews."
-            )
-
-            if st.button(
-                "View Schedule",
-                key="home_schedule",
-                width="stretch"
-            ):
-                st.session_state["page"] = "schedule"
-                st.rerun()
-
-    with rankings_col:
-        with st.container(border=True):
-            st.markdown("### Power Rankings")
-            st.write(
-                "View league-wide team ratings entering "
-                "each week."
-            )
-
-            if st.button(
-                "View Power Rankings",
-                key="home_power_rankings",
-                width="stretch"
-            ):
-                st.session_state["page"] = "power_rankings"
-                st.rerun()
-
-    st.divider()
-
-    # -------------------------
-    # MODEL
-    # -------------------------
-
-    st.subheader("Prediction Model")
-
-    model_col, confidence_col, matchup_col = st.columns(3)
-
-    with model_col:
-        st.metric(
-            "2025 Holdout Accuracy",
-            "67.5%"
-        )
-
-    with confidence_col:
-        st.metric(
-            "70–80% Confidence",
-            "72.5%"
-        )
-
-    with matchup_col:
-        st.metric(
-            "Model Version",
-            "V2"
-        )
-
-    st.caption(
-        "V2 was evaluated using rolling season holdouts, with each "
-        "season evaluated using only information available prior to each game."
-    )
-
-    st.divider()
-
-    # -------------------------
-    # FEATURES
-    # -------------------------
-
-    st.subheader("Dashboard Features")
-
-    feature_rows = [
-        {
-            "Feature": "Game Predictions",
-            "Description": "Win probabilities, confidence, and prediction breakdown."
-        },
-        {
-            "Feature": "Matchup Analysis",
-            "Description": "Offense-vs-defense comparisons and matchup advantages."
-        },
-        {
-            "Feature": "Power Ratings",
-            "Description": "Team strength ratings and league-wide rankings."
-        },
-        {
-            "Feature": "Betting Markets",
-            "Description": "Moneylines, spreads, totals, no-vig probabilities, and model edge."
-        },
-        {
-            "Feature": "Player Spotlights",
-            "Description": "Key quarterbacks, skill players, and defensive impact players."
-        },
-        {
-            "Feature": "Injuries & Weather",
-            "Description": "Game-context information for availability and conditions."
-        }
-    ]
-
-    st.dataframe(
-        pd.DataFrame(feature_rows),
-        hide_index=True,
-        width="stretch"
-    )
-
-    st.stop()
-
-if st.session_state["page"] == "schedule":
+elif st.session_state["page"] == "schedule":
 
     st.title(f"NFL {DISPLAY_SEASON} Schedule")
 
@@ -460,7 +564,24 @@ if st.session_state["page"] == "schedule":
 
 else:
     selected_week = st.session_state["selected_week"]
+
 cursor = connection.cursor()
+
+if st.session_state["page"] == "home":
+    cursor.execute(
+        """
+        SELECT MIN(week)
+        FROM nfl_games
+        WHERE season = %s
+          AND completed = FALSE;
+        """,
+        (DISPLAY_SEASON,)
+    )
+
+    current_week = cursor.fetchone()[0]
+
+    if current_week is not None:
+        selected_week = current_week
 
 cursor.execute(
     """
@@ -517,6 +638,174 @@ cursor.execute(
 
 games = cursor.fetchall()
 
+# -------------------------
+# HOME PAGE
+# -------------------------
+
+if st.session_state["page"] == "home":
+
+    st.title("NFL Dashboard")
+    st.caption(f"Week {selected_week} · {DISPLAY_SEASON} Season")
+
+    st.divider()
+
+    st.subheader("This Week")
+
+    for i in range(0, min(len(games), 6), 2):
+
+        columns = st.columns(2)
+
+        for column_index in range(2):
+
+            game_index = i + column_index
+
+            if game_index >= min(len(games), 6):
+                continue
+
+            game = games[game_index]
+
+            (
+                game_id,
+                game_date,
+                away_team,
+                home_team,
+                away_team_id,
+                home_team_id,
+                away_logo,
+                home_logo,
+                away_record,
+                home_record,
+                away_home_record,
+                away_road_record,
+                home_home_record,
+                home_road_record,
+                venue,
+                venue_type,
+                away_score,
+                home_score,
+                game_state,
+                game_status,
+                completed,
+                *_
+            ) = game
+
+            with columns[column_index]:
+                with st.container(border=True):
+
+                    if completed:
+                        st.caption("FINAL")
+                    else:
+                        eastern_time = game_date.astimezone(
+                            ZoneInfo("America/New_York")
+                        )
+
+                        st.caption(
+                            eastern_time.strftime("%a · %I:%M %p ET")
+                        )
+
+                    team_col_1, at_col, team_col_2 = st.columns(
+                        [4, 1, 4]
+                    )
+
+                    with team_col_1:
+                        if away_logo:
+                            st.image(away_logo, width=55)
+
+                        st.markdown(f"**{away_team}**")
+
+                        if completed:
+                            st.markdown(f"### {away_score}")
+                        else:
+                            st.caption(away_record or "")
+
+                    with at_col:
+                        st.markdown("### @")
+
+                    with team_col_2:
+                        if home_logo:
+                            st.image(home_logo, width=55)
+
+                        st.markdown(f"**{home_team}**")
+
+                        if completed:
+                            st.markdown(f"### {home_score}")
+                        else:
+                            st.caption(home_record or "")
+
+                    if st.button(
+                        "View Game",
+                        key=f"home_game_{game_id}",
+                        width="stretch"
+                    ):
+                        st.session_state["selected_week"] = selected_week
+                        st.session_state["selected_game"] = game_id
+                        st.session_state["page"] = "game"
+                        st.rerun()
+
+    if len(games) > 6:
+        if st.button(
+            "View Full Schedule",
+            key="home_full_schedule",
+            width="stretch"
+        ):
+            st.session_state["page"] = "schedule"
+            st.rerun()
+
+    st.divider()
+
+    st.subheader("Power Rankings")
+
+    cursor.execute(
+        """
+        SELECT MIN(game_date)
+        FROM nfl_games
+        WHERE season = %s
+        AND week = %s;
+        """,
+        (
+            DISPLAY_SEASON,
+            selected_week
+        )
+    )
+
+    home_ranking_cutoff_date = cursor.fetchone()[0]
+
+    home_power_rankings = []
+
+    if home_ranking_cutoff_date is not None:
+        home_power_rankings = get_league_power_rankings(
+            cursor,
+            DISPLAY_SEASON,
+            home_ranking_cutoff_date
+        )
+
+        home_ranking_rows = []
+
+        for team in home_power_rankings[:5]:
+            home_ranking_rows.append(
+                {
+                    "Rank": team["rank"],
+                    "Team": team["team"],
+                    "Rating": f"{team['rating']:+.2f}"
+                }
+            )
+
+        st.dataframe(
+            pd.DataFrame(home_ranking_rows),
+            hide_index=True,
+            width="stretch"
+        )
+
+        if st.button(
+            "View Full Power Rankings",
+            key="home_full_power_rankings",
+            width="stretch"
+        ):
+            st.session_state["page"] = "power_rankings"
+            st.session_state["selected_game"] = None
+            st.rerun()
+
+    st.stop()
 
 # -------------------------
 # GAME DETAIL PAGE
@@ -582,21 +871,45 @@ if (
     if "game_section" not in st.session_state:
         st.session_state["game_section"] = "Overview"
 
-    selected_game_section = st.session_state["game_section"]
+    if "game_subsection" not in st.session_state:
+        st.session_state["game_subsection"] = "Game Stats"
 
-    away_last_three = get_last_three(
-        cursor,
-        away_team_id,
-        DISPLAY_SEASON,
-        profile_game_date
-    )
+    if "matchup_subsection" not in st.session_state:
+        st.session_state["matchup_subsection"] = "Analysis"
 
-    home_last_three = get_last_three(
-        cursor,
-        home_team_id,
-        DISPLAY_SEASON,
-        profile_game_date
-    )
+    if st.session_state["game_section"] == "Game":
+        selected_game_section = st.session_state["game_subsection"]
+
+    elif (
+        st.session_state["game_section"] == "Matchup"
+        and st.session_state["matchup_subsection"] == "Team Stats"
+    ):
+        selected_game_section = "Team Stats"
+
+    else:
+        selected_game_section = st.session_state["game_section"]
+
+    away_last_three = None
+    home_last_three = None
+
+    if selected_game_section in (
+        "Overview",
+        "Prediction",
+        "Players"
+    ):
+        away_last_three = get_last_three(
+            cursor,
+            away_team_id,
+            DISPLAY_SEASON,
+            profile_game_date
+        )
+
+        home_last_three = get_last_three(
+            cursor,
+            home_team_id,
+            DISPLAY_SEASON,
+            profile_game_date
+        )
 
     head_to_head = None
 
@@ -608,24 +921,65 @@ if (
             game_date
         )
 
+
     if selected_game_section in (
         "Overview",
         "Prediction",
         "Team Stats",
         "Matchup"
     ):
-        away_scoring = get_team_scoring_profile(
+
+    
+        previous_season = DISPLAY_SEASON - 1
+
+        profile_rows = get_matchup_profile_rows_bulk(
             cursor,
             away_team_id,
-            DISPLAY_SEASON,
-            profile_game_date
-        )
-
-        home_scoring = get_team_scoring_profile(
-            cursor,
             home_team_id,
             DISPLAY_SEASON,
-            profile_game_date
+            profile_game_date,
+            previous_season
+        )
+
+        matchup_profiles = build_matchup_profiles_from_bulk_rows(
+            profile_rows,
+            away_team_id,
+            home_team_id,
+            DISPLAY_SEASON,
+            previous_season
+        )
+
+        away_scoring = matchup_profiles["away_scoring"]
+        home_scoring = matchup_profiles["home_scoring"]
+
+        away_boxscore = matchup_profiles["away_boxscore"]
+        home_boxscore = matchup_profiles["home_boxscore"]
+
+        away_defense = matchup_profiles["away_defense"]
+        home_defense = matchup_profiles["home_defense"]
+
+        away_previous_scoring = (
+            matchup_profiles["away_previous_scoring"]
+        )
+
+        home_previous_scoring = (
+            matchup_profiles["home_previous_scoring"]
+        )
+
+        away_previous_boxscore = (
+            matchup_profiles["away_previous_boxscore"]
+        )
+
+        home_previous_boxscore = (
+            matchup_profiles["home_previous_boxscore"]
+        )
+
+        away_previous_defense = (
+            matchup_profiles["away_previous_defense"]
+        )
+
+        home_previous_defense = (
+            matchup_profiles["home_previous_defense"]
         )
 
         away_current_games = (
@@ -648,77 +1002,6 @@ if (
             home_current_games
         )
 
-        away_boxscore = get_team_boxscore_profile(
-            cursor,
-            away_team_id,
-            DISPLAY_SEASON,
-            profile_game_date
-        )
-
-        home_boxscore = get_team_boxscore_profile(
-            cursor,
-            home_team_id,
-            DISPLAY_SEASON,
-            profile_game_date
-        )
-
-        away_defense = get_team_defensive_profile(
-            cursor,
-            away_team_id,
-            DISPLAY_SEASON,
-            profile_game_date
-        )
-
-        home_defense = get_team_defensive_profile(
-            cursor,
-            home_team_id,
-            DISPLAY_SEASON,
-            profile_game_date
-        )
-
-        previous_season = DISPLAY_SEASON - 1
-
-        away_previous_scoring = get_team_scoring_profile(
-            cursor,
-            away_team_id,
-            previous_season,
-            game_date
-        )
-
-        home_previous_scoring = get_team_scoring_profile(
-            cursor,
-            home_team_id,
-            previous_season,
-            game_date
-        )
-
-        away_previous_boxscore = get_team_boxscore_profile(
-            cursor,
-            away_team_id,
-            previous_season,
-            game_date
-        )
-
-        home_previous_boxscore = get_team_boxscore_profile(
-            cursor,
-            home_team_id,
-            previous_season,
-            game_date
-        )
-
-        away_previous_defense = get_team_defensive_profile(
-            cursor,
-            away_team_id,
-            previous_season,
-            game_date
-        )
-
-        home_previous_defense = get_team_defensive_profile(
-            cursor,
-            home_team_id,
-            previous_season,
-            game_date
-        )
 
         away_scoring_blended = blend_profile(
             away_previous_scoring,
@@ -791,6 +1074,7 @@ if (
         home_matchup_advantages = get_matchup_advantages(
             home_offense_vs_away_defense
         )
+
 
         league_matchup_baselines = get_league_matchup_baselines(
             cursor,
@@ -879,6 +1163,7 @@ if (
 
     game_weather = None
     game_betting = None
+
 
 
     if selected_game_section == "Game Stats":
@@ -1502,10 +1787,76 @@ if (
             SPECIAL_TEAMS_DISPLAY_ORDER
         )
 
-    if st.button("← Back to Schedule", key="back_to_schedule_1"):
-        st.session_state["selected_game"] = None
-        st.session_state["page"] = "schedule"
-        st.rerun()
+
+    current_game_index = next(
+        (
+            index
+            for index, game in enumerate(games)
+            if game[0] == game_id
+        ),
+        None
+    )
+
+    previous_game = (
+        games[current_game_index - 1]
+        if current_game_index is not None
+        and current_game_index > 0
+        else None
+    )
+
+    next_game = (
+        games[current_game_index + 1]
+        if current_game_index is not None
+        and current_game_index < len(games) - 1
+        else None
+    )
+
+    if previous_game and next_game:
+        previous_col, next_col = st.columns(2)
+
+        with previous_col:
+            previous_label = (
+                f"← {previous_game[2]} @ {previous_game[3]}"
+            )
+
+            if st.button(
+                previous_label,
+                key="previous_game",
+                width="stretch"
+            ):
+                st.session_state["selected_game"] = previous_game[0]
+                st.rerun()
+
+        with next_col:
+            next_label = (
+                f"{next_game[2]} @ {next_game[3]} →"
+            )
+
+            if st.button(
+                next_label,
+                key="next_game",
+                width="stretch"
+            ):
+                st.session_state["selected_game"] = next_game[0]
+                st.rerun()
+
+    elif next_game:
+        if st.button(
+            f"{next_game[2]} @ {next_game[3]} →",
+            key="next_game",
+            width="stretch"
+        ):
+            st.session_state["selected_game"] = next_game[0]
+            st.rerun()
+
+    elif previous_game:
+        if st.button(
+            f"← {previous_game[2]} @ {previous_game[3]}",
+            key="previous_game",
+            width="stretch"
+        ):
+            st.session_state["selected_game"] = previous_game[0]
+            st.rerun()
 
     st.title(f"{away_team} at {home_team}")
 
@@ -1648,22 +1999,59 @@ if (
     st.divider()
 
 
+    primary_game_sections = [
+        "Overview",
+        "Prediction",
+        "Matchup",
+        "Players",
+        "Game",
+        "Betting"
+    ]
+
+    legacy_game_sections = {
+        "Team Stats": "Matchup",
+        "Game Stats": "Game",
+        "Injuries": "Game",
+        "Weather": "Game",
+        "History": "Game"
+    }
+
+    if st.session_state["game_section"] in legacy_game_sections:
+        st.session_state["game_section"] = legacy_game_sections[
+            st.session_state["game_section"]
+        ]
+
     st.segmented_control(
         "Game Section",
-        [
-            "Overview",
-            "Prediction",
-            "Team Stats",
-            "Players",
-            "Matchup",
-            "Game Stats",
-            "Injuries",
-            "Weather",
-            "Betting",
-            "History"
-        ],
+        primary_game_sections,
         key="game_section"
     )
+
+    if st.session_state["game_section"] == "Matchup":
+        st.segmented_control(
+            "Matchup View",
+            [
+                "Analysis",
+                "Team Stats"
+            ],
+            key="matchup_subsection"
+        )
+
+    if st.session_state["game_section"] == "Game":
+
+        if "game_subsection" not in st.session_state:
+            st.session_state["game_subsection"] = "Game Stats"
+
+        st.segmented_control(
+            "Game Details",
+            [
+                "Game Stats",
+                "Injuries",
+                "Weather",
+                "History"
+            ],
+            key="game_subsection"
+        )
 
     if selected_game_section == "Overview":
         st.subheader("Game Overview")

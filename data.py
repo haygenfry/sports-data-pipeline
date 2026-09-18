@@ -418,6 +418,643 @@ def get_team_defensive_profile(cursor, team_id, season, game_date):
         "last_three_takeaways": last_three_takeaways
     }
 
+def get_matchup_profile_rows_bulk(
+    cursor,
+    away_team_id,
+    home_team_id,
+    current_season,
+    current_game_date,
+    previous_season
+):
+    # ---------------------------------
+    # SCORING ROWS
+    # ---------------------------------
+
+    cursor.execute(
+        """
+        SELECT
+            season,
+            home_team_id,
+            home_score,
+            away_team_id,
+            away_score,
+            game_date
+        FROM nfl_games
+        WHERE completed = TRUE
+          AND season IN (%s, %s)
+          AND (
+              home_team_id IN (%s::text, %s::text)
+              OR away_team_id IN (%s::text, %s::text)
+          )
+          AND (
+              season = %s
+              OR game_date < %s
+          )
+        ORDER BY season, game_date;
+        """,
+        (
+            current_season,
+            previous_season,
+            away_team_id,
+            home_team_id,
+            away_team_id,
+            home_team_id,
+            previous_season,
+            current_game_date
+        )
+    )
+
+    scoring_rows = cursor.fetchall()
+
+    # ---------------------------------
+    # TEAM STAT ROWS
+    # ---------------------------------
+
+    cursor.execute(
+        """
+        SELECT
+            g.season,
+            g.game_date,
+            s.game_id,
+            s.team_id,
+            s.total_yards,
+            s.passing_yards,
+            s.rushing_yards,
+            s.yards_per_play,
+            s.first_downs,
+            s.turnovers,
+            s.third_down_eff,
+            s.red_zone_eff,
+            s.possession_time,
+            s.defensive_touchdowns
+        FROM nfl_team_game_stats s
+        JOIN nfl_games g
+            ON s.game_id = g.game_id
+        WHERE g.completed = TRUE
+          AND g.season IN (%s, %s)
+          AND s.team_id IN (%s::text, %s::text)
+          AND (
+              g.season = %s
+              OR g.game_date < %s
+          )
+        ORDER BY g.season, g.game_date;
+        """,
+        (
+            current_season,
+            previous_season,
+            away_team_id,
+            home_team_id,
+            previous_season,
+            current_game_date
+        )
+    )
+
+    team_stat_rows = cursor.fetchall()
+
+    # ---------------------------------
+    # OPPONENT STAT ROWS
+    # ---------------------------------
+
+    cursor.execute(
+        """
+        SELECT
+            g.season,
+            g.game_date,
+            team.game_id,
+            team.team_id,
+            opponent.total_yards,
+            opponent.passing_yards,
+            opponent.rushing_yards,
+            opponent.yards_per_play,
+            opponent.first_downs,
+            opponent.turnovers,
+            opponent.third_down_eff,
+            opponent.red_zone_eff,
+            team.defensive_touchdowns
+        FROM nfl_team_game_stats team
+        JOIN nfl_games g
+            ON team.game_id = g.game_id
+        JOIN nfl_team_game_stats opponent
+            ON team.game_id = opponent.game_id
+            AND team.team_id <> opponent.team_id
+        WHERE g.completed = TRUE
+          AND g.season IN (%s, %s)
+          AND team.team_id IN (%s::text, %s::text)
+          AND (
+              g.season = %s
+              OR g.game_date < %s
+          )
+        ORDER BY g.season, g.game_date;
+        """,
+        (
+            current_season,
+            previous_season,
+            away_team_id,
+            home_team_id,
+            previous_season,
+            current_game_date
+        )
+    )
+
+    defensive_rows = cursor.fetchall()
+
+    return {
+        "scoring": scoring_rows,
+        "boxscore": team_stat_rows,
+        "defense": defensive_rows
+    }
+
+def build_scoring_profile_from_rows(
+    rows,
+    team_id,
+    season
+):
+    team_id = str(team_id)
+
+    games = [
+        row
+        for row in rows
+        if row[0] == season
+        and (
+            row[1] == team_id
+            or row[3] == team_id
+        )
+    ]
+
+    if not games:
+        return None
+
+    points_for = 0
+    points_against = 0
+    wins = 0
+
+    home_points_for = 0
+    home_games = 0
+
+    road_points_for = 0
+    road_games = 0
+
+    for (
+        _,
+        home_team_id,
+        home_score,
+        away_team_id,
+        away_score,
+        _
+    ) in games:
+
+        if home_team_id == team_id:
+            points_for += home_score
+            points_against += away_score
+
+            home_points_for += home_score
+            home_games += 1
+
+            if home_score > away_score:
+                wins += 1
+
+        else:
+            points_for += away_score
+            points_against += home_score
+
+            road_points_for += away_score
+            road_games += 1
+
+            if away_score > home_score:
+                wins += 1
+
+    games_played = len(games)
+
+    last_three_games = games[-3:]
+
+    last_three_points_for = 0
+    last_three_points_against = 0
+
+    for (
+        _,
+        home_team_id,
+        home_score,
+        away_team_id,
+        away_score,
+        _
+    ) in last_three_games:
+
+        if home_team_id == team_id:
+            last_three_points_for += home_score
+            last_three_points_against += away_score
+        else:
+            last_three_points_for += away_score
+            last_three_points_against += home_score
+
+    last_three_count = len(last_three_games)
+
+    return {
+        "games_played": games_played,
+        "ppg": points_for / games_played,
+        "ppg_allowed": points_against / games_played,
+        "scoring_margin": (
+            points_for - points_against
+        ) / games_played,
+        "win_pct": wins / games_played,
+
+        "home_ppg": (
+            home_points_for / home_games
+            if home_games
+            else None
+        ),
+
+        "road_ppg": (
+            road_points_for / road_games
+            if road_games
+            else None
+        ),
+
+        "last_three_ppg": (
+            last_three_points_for / last_three_count
+        ),
+
+        "last_three_ppg_allowed": (
+            last_three_points_against / last_three_count
+        )
+    }
+
+
+def build_boxscore_profile_from_rows(
+    rows,
+    team_id,
+    season
+):
+    team_id = str(team_id)
+
+    team_rows = [
+        row
+        for row in rows
+        if row[0] == season
+        and row[3] == team_id
+    ]
+
+    if not team_rows:
+        return None
+
+    last_three_rows = team_rows[-3:]
+
+    total_yards = 0
+    passing_yards = 0
+    rushing_yards = 0
+    yards_per_play = 0
+    first_downs = 0
+    turnovers = 0
+
+    third_down_made = 0
+    third_down_attempts = 0
+
+    red_zone_made = 0
+    red_zone_attempts = 0
+
+    possession_seconds = 0
+
+    for row in team_rows:
+        game_total_yards = row[4]
+        game_passing_yards = row[5]
+        game_rushing_yards = row[6]
+        game_yards_per_play = row[7]
+        game_first_downs = row[8]
+        game_turnovers = row[9]
+        game_third_down_eff = row[10]
+        game_red_zone_eff = row[11]
+        game_possession_time = row[12]
+
+        total_yards += game_total_yards
+        passing_yards += game_passing_yards
+        rushing_yards += game_rushing_yards
+        yards_per_play += float(game_yards_per_play)
+        first_downs += game_first_downs
+        turnovers += game_turnovers
+
+        third_made, third_attempts = (
+            game_third_down_eff.split("-")
+        )
+
+        third_down_made += int(third_made)
+        third_down_attempts += int(third_attempts)
+
+        red_made, red_attempts = (
+            game_red_zone_eff.split("-")
+        )
+
+        red_zone_made += int(red_made)
+        red_zone_attempts += int(red_attempts)
+
+        minutes, seconds = (
+            game_possession_time.split(":")
+        )
+
+        possession_seconds += (
+            int(minutes) * 60
+            + int(seconds)
+        )
+
+    games_played = len(team_rows)
+
+    average_possession_seconds = (
+        possession_seconds / games_played
+    )
+
+    average_possession_minutes = int(
+        average_possession_seconds // 60
+    )
+
+    average_possession_remaining_seconds = int(
+        average_possession_seconds % 60
+    )
+
+    average_possession = (
+        f"{average_possession_minutes}:"
+        f"{average_possession_remaining_seconds:02d}"
+    )
+
+    last_three_total_yards = sum(
+        row[4]
+        for row in last_three_rows
+    )
+
+    last_three_turnovers = sum(
+        row[9]
+        for row in last_three_rows
+    )
+
+    last_three_games = len(last_three_rows)
+
+    return {
+        "total_yards_per_game": (
+            total_yards / games_played
+        ),
+
+        "passing_yards_per_game": (
+            passing_yards / games_played
+        ),
+
+        "rushing_yards_per_game": (
+            rushing_yards / games_played
+        ),
+
+        "yards_per_play": (
+            yards_per_play / games_played
+        ),
+
+        "first_downs_per_game": (
+            first_downs / games_played
+        ),
+
+        "turnovers_per_game": (
+            turnovers / games_played
+        ),
+
+        "third_down_pct": (
+            third_down_made / third_down_attempts
+            if third_down_attempts
+            else 0
+        ),
+
+        "red_zone_pct": (
+            red_zone_made / red_zone_attempts
+            if red_zone_attempts
+            else 0
+        ),
+
+        "average_possession": average_possession,
+
+        "last_three_yards_per_game": (
+            last_three_total_yards
+            / last_three_games
+        ),
+
+        "last_three_turnovers_per_game": (
+            last_three_turnovers
+            / last_three_games
+        ),
+
+        "last_three_turnovers": (
+            last_three_turnovers
+        )
+    }
+
+
+def build_defensive_profile_from_rows(
+    rows,
+    team_id,
+    season
+):
+    team_id = str(team_id)
+
+    team_rows = [
+        row
+        for row in rows
+        if row[0] == season
+        and row[3] == team_id
+    ]
+
+    if not team_rows:
+        return None
+
+    last_three_rows = team_rows[-3:]
+
+    total_yards_allowed = 0
+    passing_yards_allowed = 0
+    rushing_yards_allowed = 0
+    yards_per_play_allowed = 0
+    first_downs_allowed = 0
+    takeaways = 0
+    defensive_touchdowns = 0
+
+    opponent_third_down_made = 0
+    opponent_third_down_attempts = 0
+
+    opponent_red_zone_made = 0
+    opponent_red_zone_attempts = 0
+
+    for row in team_rows:
+        opponent_total_yards = row[4]
+        opponent_passing_yards = row[5]
+        opponent_rushing_yards = row[6]
+        opponent_yards_per_play = row[7]
+        opponent_first_downs = row[8]
+        opponent_turnovers = row[9]
+        opponent_third_down_eff = row[10]
+        opponent_red_zone_eff = row[11]
+        game_defensive_touchdowns = row[12]
+
+        total_yards_allowed += opponent_total_yards
+        passing_yards_allowed += opponent_passing_yards
+        rushing_yards_allowed += opponent_rushing_yards
+
+        yards_per_play_allowed += float(
+            opponent_yards_per_play
+        )
+
+        first_downs_allowed += opponent_first_downs
+        takeaways += opponent_turnovers
+
+        defensive_touchdowns += (
+            game_defensive_touchdowns
+        )
+
+        third_made, third_attempts = (
+            opponent_third_down_eff.split("-")
+        )
+
+        opponent_third_down_made += int(
+            third_made
+        )
+
+        opponent_third_down_attempts += int(
+            third_attempts
+        )
+
+        red_made, red_attempts = (
+            opponent_red_zone_eff.split("-")
+        )
+
+        opponent_red_zone_made += int(red_made)
+        opponent_red_zone_attempts += int(
+            red_attempts
+        )
+
+    games_played = len(team_rows)
+
+    last_three_yards_allowed = sum(
+        row[4]
+        for row in last_three_rows
+    )
+
+    last_three_takeaways = sum(
+        row[9]
+        for row in last_three_rows
+    )
+
+    last_three_games = len(last_three_rows)
+
+    return {
+        "yards_allowed_per_game": (
+            total_yards_allowed / games_played
+        ),
+
+        "passing_yards_allowed_per_game": (
+            passing_yards_allowed / games_played
+        ),
+
+        "rushing_yards_allowed_per_game": (
+            rushing_yards_allowed / games_played
+        ),
+
+        "yards_per_play_allowed": (
+            yards_per_play_allowed / games_played
+        ),
+
+        "first_downs_allowed_per_game": (
+            first_downs_allowed / games_played
+        ),
+
+        "takeaways_per_game": (
+            takeaways / games_played
+        ),
+
+        "opponent_third_down_pct": (
+            opponent_third_down_made
+            / opponent_third_down_attempts
+            if opponent_third_down_attempts
+            else 0
+        ),
+
+        "opponent_red_zone_pct": (
+            opponent_red_zone_made
+            / opponent_red_zone_attempts
+            if opponent_red_zone_attempts
+            else 0
+        ),
+
+        "defensive_touchdowns": (
+            defensive_touchdowns
+        ),
+
+        "last_three_yards_allowed_per_game": (
+            last_three_yards_allowed
+            / last_three_games
+        ),
+
+        "last_three_takeaways_per_game": (
+            last_three_takeaways
+            / last_three_games
+        ),
+
+        "last_three_takeaways": (
+            last_three_takeaways
+        )
+    }
+
+
+def build_matchup_profiles_from_bulk_rows(
+    bulk_rows,
+    away_team_id,
+    home_team_id,
+    current_season,
+    previous_season
+):
+    profiles = {}
+
+    for label, team_id in (
+        ("away", away_team_id),
+        ("home", home_team_id)
+    ):
+        profiles[f"{label}_scoring"] = (
+            build_scoring_profile_from_rows(
+                bulk_rows["scoring"],
+                team_id,
+                current_season
+            )
+        )
+
+        profiles[f"{label}_boxscore"] = (
+            build_boxscore_profile_from_rows(
+                bulk_rows["boxscore"],
+                team_id,
+                current_season
+            )
+        )
+
+        profiles[f"{label}_defense"] = (
+            build_defensive_profile_from_rows(
+                bulk_rows["defense"],
+                team_id,
+                current_season
+            )
+        )
+
+        profiles[f"{label}_previous_scoring"] = (
+            build_scoring_profile_from_rows(
+                bulk_rows["scoring"],
+                team_id,
+                previous_season
+            )
+        )
+
+        profiles[f"{label}_previous_boxscore"] = (
+            build_boxscore_profile_from_rows(
+                bulk_rows["boxscore"],
+                team_id,
+                previous_season
+            )
+        )
+
+        profiles[f"{label}_previous_defense"] = (
+            build_defensive_profile_from_rows(
+                bulk_rows["defense"],
+                team_id,
+                previous_season
+            )
+        )
+
+    return profiles
 
 def get_offensive_starters(cursor, team_id):
     cursor.execute(
