@@ -500,6 +500,25 @@ st.set_page_config(
     layout="wide"
 )
 
+current_week_cursor = connection.cursor()
+
+current_week_cursor.execute(
+    """
+    SELECT MIN(week)
+    FROM nfl_games
+    WHERE season = %s
+      AND completed = FALSE;
+    """,
+    (DISPLAY_SEASON,)
+)
+
+current_week = current_week_cursor.fetchone()[0]
+
+if current_week is None:
+    current_week = 18
+
+current_week_cursor.close()
+
 if "selected_week" not in st.session_state:
     st.session_state["selected_week"] = 1
 
@@ -557,7 +576,7 @@ elif st.session_state["page"] == "schedule":
     selected_week = st.selectbox(
         "Select Week",
         list(range(1, 19)),
-        index=st.session_state["selected_week"] - 1
+        index=current_week - 1
     )
 
     st.session_state["selected_week"] = selected_week
@@ -567,21 +586,18 @@ else:
 
 cursor = connection.cursor()
 
+cursor.execute(
+    """
+    SELECT MIN(week)
+    FROM nfl_games
+    WHERE season = %s
+      AND completed = FALSE;
+    """,
+    (DISPLAY_SEASON,)
+)
+
 if st.session_state["page"] == "home":
-    cursor.execute(
-        """
-        SELECT MIN(week)
-        FROM nfl_games
-        WHERE season = %s
-          AND completed = FALSE;
-        """,
-        (DISPLAY_SEASON,)
-    )
-
-    current_week = cursor.fetchone()[0]
-
-    if current_week is not None:
-        selected_week = current_week
+    selected_week = current_week
 
 cursor.execute(
     """
@@ -4083,6 +4099,7 @@ if st.session_state["page"] == "power_rankings":
     ranking_week = st.selectbox(
         "Rankings entering Week",
         list(range(1, 19)),
+        index=current_week - 1,
         key="power_ranking_week"
     )
 
