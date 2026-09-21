@@ -135,17 +135,26 @@ def get_team_scoring_profile(cursor, team_id, season, game_date):
 
     last_three_points_for = 0
     last_three_points_against = 0
+    last_three_wins = 0
 
     for home_team_id, home_score, away_team_id, away_score, _ in last_three_games:
 
         if home_team_id == team_id:
             last_three_points_for += home_score
             last_three_points_against += away_score
+
+            if home_score > away_score:
+                last_three_wins += 1
+
         else:
             last_three_points_for += away_score
             last_three_points_against += home_score
 
+            if away_score > home_score:
+                last_three_wins += 1
+
     last_three_count = len(last_three_games)
+    last_three_losses = last_three_count - last_three_wins
 
     return {
         "games_played": games_played,
@@ -158,7 +167,8 @@ def get_team_scoring_profile(cursor, team_id, season, game_date):
         "road_ppg": road_points_for / road_games if road_games else None,
 
         "last_three_ppg": last_three_points_for / last_three_count,
-        "last_three_ppg_allowed": last_three_points_against / last_three_count
+        "last_three_ppg_allowed": last_three_points_against / last_three_count,
+        "last_three_record": f"{last_three_wins}-{last_three_losses}"
     }
 
 
@@ -629,6 +639,7 @@ def build_scoring_profile_from_rows(
 
     last_three_points_for = 0
     last_three_points_against = 0
+    last_three_wins = 0
 
     for (
         _,
@@ -642,11 +653,19 @@ def build_scoring_profile_from_rows(
         if home_team_id == team_id:
             last_three_points_for += home_score
             last_three_points_against += away_score
+
+            if home_score > away_score:
+                last_three_wins += 1
+
         else:
             last_three_points_for += away_score
             last_three_points_against += home_score
 
+            if away_score > home_score:
+                last_three_wins += 1
+
     last_three_count = len(last_three_games)
+    last_three_losses = last_three_count - last_three_wins
 
     return {
         "games_played": games_played,
@@ -675,6 +694,10 @@ def build_scoring_profile_from_rows(
 
         "last_three_ppg_allowed": (
             last_three_points_against / last_three_count
+        ),
+
+        "last_three_record": (
+            f"{last_three_wins}-{last_three_losses}"
         )
     }
 

@@ -1874,43 +1874,38 @@ if (
             st.session_state["selected_game"] = previous_game[0]
             st.rerun()
 
-    st.title(f"{away_team} at {home_team}")
-
     # -------------------------
-    # GAME STATUS
+    # COMPACT MATCHUP HEADER
     # -------------------------
 
+    eastern_time = game_date.astimezone(
+        ZoneInfo("America/New_York")
+    )
+
+    # Status
     if game_status == "Canceled":
-        st.markdown(
-            "<div style='text-align: center;'>CANCELED</div>",
-            unsafe_allow_html=True
-        )
-
+        status_text = "CANCELED"
     elif game_state == "in":
-        st.markdown(
-            "<div style='text-align: center;'>LIVE</div>",
-            unsafe_allow_html=True
-        )
-
+        status_text = game_status or "LIVE"
     elif completed:
-        st.markdown(
-            "<div style='text-align: center;'>FINAL</div>",
-            unsafe_allow_html=True
-        )
-
+        status_text = "FINAL"
     else:
-        st.markdown(
-            "<div style='text-align: center;'>UPCOMING</div>",
-            unsafe_allow_html=True
+        status_text = eastern_time.strftime(
+            "%A, %B %d · %I:%M %p %Z"
         )
 
+    st.markdown(
+        f"<div style='text-align: center; "
+        f"font-size: 0.9rem; font-weight: 600;'>"
+        f"{status_text}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
 
-    # -------------------------
-    # MATCHUP HEADER
-    # -------------------------
-
+    # Matchup
     away_col, middle_col, home_col = st.columns(
-        [2, 1, 2]
+        [2, 1, 2],
+        vertical_alignment="center"
     )
 
     with away_col:
@@ -1920,11 +1915,24 @@ if (
             away_score
             if game_state == "in" or completed
             else None,
-            logo_size=120
+            logo_size=90
+        )
+
+        st.markdown(
+            f"<div style='text-align: center;'>"
+            f"{away_record or ''}"
+            f"</div>",
+            unsafe_allow_html=True
         )
 
     with middle_col:
-        st.markdown("## @")
+        st.markdown(
+            "<div style='text-align: center; "
+            "font-size: 1.5rem; font-weight: 600;'>"
+            "@"
+            "</div>",
+            unsafe_allow_html=True
+        )
 
     with home_col:
         render_matchup_team(
@@ -1933,87 +1941,26 @@ if (
             home_score
             if game_state == "in" or completed
             else None,
-            logo_size=120
+            logo_size=90
         )
 
-
-    # -------------------------
-    # GAME TIME / LIVE STATUS
-    # -------------------------
-
-    eastern_time = game_date.astimezone(
-        ZoneInfo("America/New_York")
-    )
-
-    if game_status == "Canceled":
-        st.markdown(
-            "<div style='text-align: center;'>Game canceled</div>",
-            unsafe_allow_html=True
-        )
-
-    elif game_state == "in":
         st.markdown(
             f"<div style='text-align: center;'>"
-            f"{game_status or 'In Progress'}"
+            f"{home_record or ''}"
             f"</div>",
             unsafe_allow_html=True
         )
 
-    elif not completed:
-        st.markdown(
-            "<div style='text-align: center;'>"
-            + eastern_time.strftime(
-                "%A, %B %d · %I:%M %p %Z"
-            )
-            + "</div>",
-            unsafe_allow_html=True
-        )
-
-
-    # -------------------------
-    # VENUE
-    # -------------------------
-
+    # Venue
     st.markdown(
-        f"<div style='text-align: center;'>{venue}</div>",
+        f"<div style='text-align: center; "
+        f"font-size: 0.9rem; opacity: 0.7;'>"
+        f"{venue}"
+        f"</div>",
         unsafe_allow_html=True
     )
 
     st.divider()
-
-    st.header("Team Records")
-
-    away_info, home_info = st.columns(2)
-
-    with away_info:
-        st.markdown(f"### {away_team}")
-        st.write(f"Conference: {away_conference}")
-        st.write(f"Overall: {away_record}")
-        st.write(f"Home: {away_home_record}")
-        st.write(f"Road: {away_road_record}")
-        st.write(f"Division: {away_division_record}")
-        st.write(f"Conference Record: {away_conference_record}")
-        st.write(f"Streak: {away_streak}")
-        st.write(
-            f"Last 3 (most recent first): "
-            f"{' - '.join(away_last_three) if away_last_three else 'No games played'}"
-        )
-    with home_info:
-        st.markdown(f"### {home_team}")
-        st.write(f"Conference: {home_conference}")
-        st.write(f"Overall: {home_record}")
-        st.write(f"Home: {home_home_record}")
-        st.write(f"Road: {home_road_record}")
-        st.write(f"Division: {home_division_record}")
-        st.write(f"Conference Record: {home_conference_record}")
-        st.write(f"Streak: {home_streak}")
-        st.write(
-            f"Last 3 (most recent first): "
-            f"{' - '.join(home_last_three) if home_last_three else 'No games played'}"
-        )
-
-    st.divider()
-
 
     primary_game_sections = [
         "Overview",
@@ -2137,40 +2084,6 @@ if (
         st.divider()
 
         # -------------------------
-        # TEAM CONTEXT
-        # -------------------------
-
-        st.markdown("### Team Context")
-
-        away_context_col, home_context_col = st.columns(2)
-
-        with away_context_col:
-            st.markdown(f"**{away_team}**")
-
-            st.write(
-                f"Record: {away_record}"
-            )
-
-            st.write(
-                f"Last 3: "
-                f"{' - '.join(away_last_three) if away_last_three else 'No games played'}"
-            )
-
-        with home_context_col:
-            st.markdown(f"**{home_team}**")
-
-            st.write(
-                f"Record: {home_record}"
-            )
-
-            st.write(
-                f"Last 3: "
-                f"{' - '.join(home_last_three) if home_last_three else 'No games played'}"
-            )
-
-        st.divider()
-
-        # -------------------------
         # MARKET SUMMARY
         # -------------------------
 
@@ -2262,12 +2175,9 @@ if (
             st.markdown("### Model Pick")
 
             st.write(
-                f"{predicted_winner} "
-                f"({predicted_probability:.1f}%)"
-            )
-
-            st.caption(
-                f"Confidence: {prediction_confidence}"
+                f"**{predicted_winner}** · "
+                f"{predicted_probability:.1f}% · "
+                f"{prediction_confidence} confidence"
             )
 
         st.divider()
@@ -2366,23 +2276,14 @@ if (
             if away_market_edge > home_market_edge:
                 market_edge_team = away_team
                 market_edge_value = away_market_edge
-                market_model_probability = away_model_probability
-                market_probability = away_no_vig_probability
             else:
                 market_edge_team = home_team
                 market_edge_value = home_market_edge
-                market_model_probability = home_model_probability
-                market_probability = home_no_vig_probability
 
             if market_edge_value > 0.03:
                 st.metric(
                     market_edge_team,
                     f"{market_edge_value * 100:+.1f}%"
-                )
-
-                st.caption(
-                    f"V2 model: {market_model_probability * 100:.1f}% · "
-                    f"No-vig market: {market_probability * 100:.1f}%"
                 )
 
             else:
@@ -2632,16 +2533,8 @@ if (
             recent_form_rows = [
                 {
                     "Metric": "Record",
-                    away_team: (
-                        " - ".join(away_last_three)
-                        if away_last_three
-                        else "—"
-                    ),
-                    home_team: (
-                        " - ".join(home_last_three)
-                        if home_last_three
-                        else "—"
-                    )
+                    away_team: away_scoring["last_three_record"],
+                    home_team: home_scoring["last_three_record"]
                 },
                 {
                     "Metric": "Points / Game",
@@ -2762,19 +2655,14 @@ if (
             with away_spotlight_col:
                 st.markdown(f"### {away_team}")
 
-                # QUARTERBACK
                 if away_key_players["qb"]:
                     qb = away_key_players["qb"]
                     player = qb["player"]
                     profile = qb["profile"]
 
-                    st.markdown(
-                        f"**QB · {player[3]}**"
-                    )
-
-                    st.write(
+                    qb_stats = (
                         f"{profile['passing_yards_per_game']:.1f} pass YPG · "
-                        f"{profile['passing_touchdowns']} Pass TD · "
+                        f"{profile['passing_touchdowns']} TD · "
                         f"{profile['interceptions']} INT"
                     )
 
@@ -2782,46 +2670,46 @@ if (
                         profile["rushing_yards"] > 0
                         or profile["rushing_touchdowns"] > 0
                     ):
-                        st.write(
-                            f"{profile['rushing_yards']} Rush YDS · "
-                            f"{profile['rushing_touchdowns']} Rush TD"
+                        qb_stats += (
+                            f" · {profile['rushing_yards']} rush YDS · "
+                            f"{profile['rushing_touchdowns']} rush TD"
                         )
 
-                # SKILL PLAYER
+                    st.markdown(
+                        f"**QB · {player[3]}**  \n"
+                        f"{qb_stats}"
+                    )
+
                 if away_key_players["skill"]:
                     skill = away_key_players["skill"]
                     player = skill["player"]
                     profile = skill["profile"]
 
-                    st.markdown(
-                        f"**Skill · {player[3]} ({skill['type']})**"
-                    )
-
                     if skill["type"] == "RB":
-                        st.write(
+                        skill_stats = (
                             f"{profile['scrimmage_yards'] / profile['games_played']:.1f} "
                             f"scrimmage YPG · "
                             f"{profile['total_touchdowns']} TD"
                         )
-
                     else:
-                        st.write(
+                        skill_stats = (
                             f"{profile['receiving_yards_per_game']:.1f} rec YPG · "
                             f"{profile['targets']} targets · "
                             f"{profile['receiving_touchdowns']} TD"
                         )
 
-                # DEFENSE
+                    st.markdown(
+                        f"**Skill · {player[3]} ({skill['type']})**  \n"
+                        f"{skill_stats}"
+                    )
+
                 if away_key_players["defense"]:
                     defense = away_key_players["defense"]
                     player = defense["player"]
                     profile = defense["profile"]
 
                     st.markdown(
-                        f"**Defense · {player[3]} ({defense['type']})**"
-                    )
-
-                    st.write(
+                        f"**Defense · {player[3]} ({defense['type']})**  \n"
                         f"{profile['sacks']:.1f} sacks · "
                         f"{profile['interceptions']} INT · "
                         f"{profile['total_tackles']} tackles"
@@ -2834,19 +2722,14 @@ if (
             with home_spotlight_col:
                 st.markdown(f"### {home_team}")
 
-                # QUARTERBACK
                 if home_key_players["qb"]:
                     qb = home_key_players["qb"]
                     player = qb["player"]
                     profile = qb["profile"]
 
-                    st.markdown(
-                        f"**QB · {player[3]}**"
-                    )
-
-                    st.write(
+                    qb_stats = (
                         f"{profile['passing_yards_per_game']:.1f} pass YPG · "
-                        f"{profile['passing_touchdowns']} Pass TD · "
+                        f"{profile['passing_touchdowns']} TD · "
                         f"{profile['interceptions']} INT"
                     )
 
@@ -2854,46 +2737,46 @@ if (
                         profile["rushing_yards"] > 0
                         or profile["rushing_touchdowns"] > 0
                     ):
-                        st.write(
-                            f"{profile['rushing_yards']} Rush YDS · "
-                            f"{profile['rushing_touchdowns']} Rush TD"
+                        qb_stats += (
+                            f" · {profile['rushing_yards']} rush YDS · "
+                            f"{profile['rushing_touchdowns']} rush TD"
                         )
 
-                # SKILL PLAYER
+                    st.markdown(
+                        f"**QB · {player[3]}**  \n"
+                        f"{qb_stats}"
+                    )
+
                 if home_key_players["skill"]:
                     skill = home_key_players["skill"]
                     player = skill["player"]
                     profile = skill["profile"]
 
-                    st.markdown(
-                        f"**Skill · {player[3]} ({skill['type']})**"
-                    )
-
                     if skill["type"] == "RB":
-                        st.write(
+                        skill_stats = (
                             f"{profile['scrimmage_yards'] / profile['games_played']:.1f} "
                             f"scrimmage YPG · "
                             f"{profile['total_touchdowns']} TD"
                         )
-
                     else:
-                        st.write(
+                        skill_stats = (
                             f"{profile['receiving_yards_per_game']:.1f} rec YPG · "
                             f"{profile['targets']} targets · "
                             f"{profile['receiving_touchdowns']} TD"
                         )
 
-                # DEFENSE
+                    st.markdown(
+                        f"**Skill · {player[3]} ({skill['type']})**  \n"
+                        f"{skill_stats}"
+                    )
+
                 if home_key_players["defense"]:
                     defense = home_key_players["defense"]
                     player = defense["player"]
                     profile = defense["profile"]
 
                     st.markdown(
-                        f"**Defense · {player[3]} ({defense['type']})**"
-                    )
-
-                    st.write(
+                        f"**Defense · {player[3]} ({defense['type']})**  \n"
                         f"{profile['sacks']:.1f} sacks · "
                         f"{profile['interceptions']} INT · "
                         f"{profile['total_tackles']} tackles"
@@ -2901,50 +2784,50 @@ if (
 
         st.divider()
 
-        st.subheader("Offensive Starters")
+        with st.expander("Offensive Starters"):
 
-        for position_slot in matchup_offensive_slots:
+            for position_slot in matchup_offensive_slots:
 
-            away_starter = away_offensive_map.get(position_slot)
-            home_starter = home_offensive_map.get(position_slot)
+                away_starter = away_offensive_map.get(position_slot)
+                home_starter = home_offensive_map.get(position_slot)
 
-            st.markdown(f"### {position_slot.upper()}")
+                st.markdown(f"### {position_slot.upper()}")
 
-            away_player_col, home_player_col = st.columns(2)
+                away_player_col, home_player_col = st.columns(2)
 
-            with away_player_col:
-                with st.container(border=True):
-                    st.markdown(f"**{away_team}**")
+                with away_player_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{away_team}**")
 
-                    if away_starter:
-                        render_offensive_player(
-                            away_starter,
-                            away_qb_profile,
-                            away_qb[2] if away_qb else None,
-                            away_rb_profile,
-                            away_rb[2] if away_rb else None,
-                            away_receiver_profile_map
-                        )
-                    else:
-                        st.markdown("**N/A**")
-                        st.caption("No listed starter")
+                        if away_starter:
+                            render_offensive_player(
+                                away_starter,
+                                away_qb_profile,
+                                away_qb[2] if away_qb else None,
+                                away_rb_profile,
+                                away_rb[2] if away_rb else None,
+                                away_receiver_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed starter")
 
-            with home_player_col:
-                with st.container(border=True):
-                    st.markdown(f"**{home_team}**")
+                with home_player_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{home_team}**")
 
-                    if home_starter:
-                        render_offensive_player(
-                            home_starter,
-                            home_qb_profile,
-                            home_qb[2] if home_qb else None,
-                            home_rb_profile,
-                            home_rb[2] if home_rb else None,
-                            home_receiver_profile_map
-                        )
-                    else:
-                        st.markdown("**N/A**")
-                        st.caption("No listed starter")
+                        if home_starter:
+                            render_offensive_player(
+                                home_starter,
+                                home_qb_profile,
+                                home_qb[2] if home_qb else None,
+                                home_rb_profile,
+                                home_rb[2] if home_rb else None,
+                                home_receiver_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed starter")
 
         with st.expander("Offensive Depth / Rotation"):
 
@@ -2992,42 +2875,43 @@ if (
                             st.caption("No listed player")
 
         st.divider()
-        st.subheader("Defensive Starters")
 
-        for position_slot in matchup_defensive_slots:
+        with st.expander("Defensive Starters"):
 
-            away_starter = away_defensive_map.get(position_slot)
-            home_starter = home_defensive_map.get(position_slot)
+            for position_slot in matchup_defensive_slots:
 
-            st.markdown(f"### {position_slot.upper()}")
+                away_starter = away_defensive_map.get(position_slot)
+                home_starter = home_defensive_map.get(position_slot)
 
-            away_defense_col, home_defense_col = st.columns(2)
+                st.markdown(f"### {position_slot.upper()}")
 
-            with away_defense_col:
-                with st.container(border=True):
-                    st.markdown(f"**{away_team}**")
+                away_defense_col, home_defense_col = st.columns(2)
 
-                    if away_starter:
-                        render_defensive_player(
-                            away_starter,
-                            away_defensive_profile_map
-                        )
-                    else:
-                        st.markdown("**N/A**")
-                        st.caption("No listed starter")
+                with away_defense_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{away_team}**")
 
-            with home_defense_col:
-                with st.container(border=True):
-                    st.markdown(f"**{home_team}**")
+                        if away_starter:
+                            render_defensive_player(
+                                away_starter,
+                                away_defensive_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed starter")
 
-                    if home_starter:
-                        render_defensive_player(
-                            home_starter,
-                            home_defensive_profile_map
-                        )
-                    else:
-                        st.markdown("**N/A**")
-                        st.caption("No listed starter")
+                with home_defense_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{home_team}**")
+
+                        if home_starter:
+                            render_defensive_player(
+                                home_starter,
+                                home_defensive_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed starter")
 
         with st.expander("Defensive Depth / Rotation"):
 
@@ -3075,42 +2959,43 @@ if (
                             st.caption("No listed player")
 
         st.divider()
-        st.subheader("Special Teams")
 
-        for position_slot in matchup_special_teams_slots:
+        with st.expander("Special Teams"):
 
-            away_starter = away_special_teams_map.get(position_slot)
-            home_starter = home_special_teams_map.get(position_slot)
+            for position_slot in matchup_special_teams_slots:
 
-            st.markdown(f"### {position_slot.upper()}")
+                away_starter = away_special_teams_map.get(position_slot)
+                home_starter = home_special_teams_map.get(position_slot)
 
-            away_special_col, home_special_col = st.columns(2)
+                st.markdown(f"### {position_slot.upper()}")
 
-            with away_special_col:
-                with st.container(border=True):
-                    st.markdown(f"**{away_team}**")
+                away_special_col, home_special_col = st.columns(2)
 
-                    if away_starter:
-                        render_special_teams_player(
-                            away_starter,
-                            away_special_teams_profile_map
-                        )
-                    else:
-                        st.markdown("**N/A**")
-                        st.caption("No listed starter")
+                with away_special_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{away_team}**")
 
-            with home_special_col:
-                with st.container(border=True):
-                    st.markdown(f"**{home_team}**")
+                        if away_starter:
+                            render_special_teams_player(
+                                away_starter,
+                                away_special_teams_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed starter")
 
-                    if home_starter:
-                        render_special_teams_player(
-                            home_starter,
-                            home_special_teams_profile_map
-                        )
-                    else:
-                        st.markdown("**N/A**")
-                        st.caption("No listed starter")
+                with home_special_col:
+                    with st.container(border=True):
+                        st.markdown(f"**{home_team}**")
+
+                        if home_starter:
+                            render_special_teams_player(
+                                home_starter,
+                                home_special_teams_profile_map
+                            )
+                        else:
+                            st.markdown("**N/A**")
+                            st.caption("No listed starter")
 
         with st.expander("Special Teams Depth / Rotation"):
 
@@ -3206,35 +3091,6 @@ if (
             home_matchup_edges
         )
 
-        st.subheader("Matchup Advantages")
-
-        if matchup_summary:
-
-            away_adv_col, home_adv_col = st.columns(2)
-
-            with away_adv_col:
-                st.markdown(f"### {away_team}")
-
-                if matchup_summary["away_advantages"]:
-                    for advantage in matchup_summary["away_advantages"]:
-                        st.write(f"• {advantage}")
-                else:
-                    st.write("No clear matchup advantages.")
-
-            with home_adv_col:
-                st.markdown(f"### {home_team}")
-
-                if matchup_summary["home_advantages"]:
-                    for advantage in matchup_summary["home_advantages"]:
-                        st.write(f"• {advantage}")
-                else:
-                    st.write("No clear matchup advantages.")
-
-        else:
-            st.info(
-                "Current-season matchup advantages are not available yet."
-            )
-
         if matchup_prediction_adjustment is not None:
 
             if matchup_prediction_adjustment > 0.25:
@@ -3246,12 +3102,15 @@ if (
             else:
                 matchup_lean_team = None
 
-            st.markdown("#### Overall Matchup Lean")
+            matchup_lean_text = (
+                matchup_lean_team
+                if matchup_lean_team
+                else "Roughly even"
+            )
 
-            if matchup_lean_team:
-                st.write(matchup_lean_team)
-            else:
-                st.write("Roughly even")
+            st.markdown(
+                f"**Overall Matchup Lean:** {matchup_lean_text}"
+            )
 
         st.divider()
 
@@ -3280,10 +3139,6 @@ if (
             st.write("Game stats available after completion.")
 
         else:
-            st.markdown(
-                f"### {away_team} vs {home_team}"
-            )
-
             team_stat_rows = [
                 (
                     "Total Yards",
@@ -3386,100 +3241,95 @@ if (
         st.divider()
         st.subheader("Player Box Score")
 
-        render_passing_box_score(
-            away_team,
-            away_game_player_stats
-        )
+        with st.expander("Passing"):
+            render_passing_box_score(
+                away_team,
+                away_game_player_stats
+            )
 
-        render_passing_box_score(
-            home_team,
-            home_game_player_stats
-        )
+            render_passing_box_score(
+                home_team,
+                home_game_player_stats
+            )
 
-        render_stat_section_spacer()
+        with st.expander("Rushing"):
+            render_rushing_box_score(
+                away_team,
+                away_game_player_stats
+            )
 
-        render_rushing_box_score(
-            away_team,
-            away_game_player_stats
-        )
+            render_rushing_box_score(
+                home_team,
+                home_game_player_stats
+            )
 
-        render_rushing_box_score(
-            home_team,
-            home_game_player_stats
-        )
+        with st.expander("Receiving"):
+            render_receiving_box_score(
+                away_team,
+                away_game_player_stats
+            )
 
-        render_stat_section_spacer()
+            render_receiving_box_score(
+                home_team,
+                home_game_player_stats
+            )
 
-        render_receiving_box_score(
-            away_team,
-            away_game_player_stats
-        )
+        with st.expander("Fumbles"):
+            render_fumbles_box_score(
+                away_team,
+                away_game_player_stats
+            )
 
-        render_receiving_box_score(
-            home_team,
-            home_game_player_stats
-        )
+            render_fumbles_box_score(
+                home_team,
+                home_game_player_stats
+            )
 
-        render_stat_section_spacer()
+        with st.expander("Defense"):
+            render_defensive_box_score(
+                away_team,
+                away_game_player_stats
+            )
 
-        render_fumbles_box_score(
-            away_team,
-            away_game_player_stats
-        )
+            render_defensive_box_score(
+                home_team,
+                home_game_player_stats
+            )
 
-        render_fumbles_box_score(
-            home_team,
-            home_game_player_stats
-        )
+        with st.expander("Special Teams"):
+            render_kicking_box_score(
+                away_team,
+                away_game_player_stats
+            )
 
-        render_stat_section_spacer()
+            render_kicking_box_score(
+                home_team,
+                home_game_player_stats
+            )
 
-        render_defensive_box_score(
-            away_team,
-            away_game_player_stats
-        )
+            render_stat_section_spacer()
 
-        render_defensive_box_score(
-            home_team,
-            home_game_player_stats
-        )
+            render_punting_box_score(
+                away_team,
+                away_game_player_stats
+            )
 
-        st.divider()
-        st.subheader("Special Teams")
+            render_punting_box_score(
+                home_team,
+                home_game_player_stats
+            )
 
-        render_kicking_box_score(
-            away_team,
-            away_game_player_stats
-        )
+            render_stat_section_spacer()
 
-        render_kicking_box_score(
-            home_team,
-            home_game_player_stats
-        )
+            render_return_box_score(
+                away_team,
+                away_game_player_stats
+            )
 
-        render_stat_section_spacer()
-
-        render_punting_box_score(
-            away_team,
-            away_game_player_stats
-        )
-
-        render_punting_box_score(
-            home_team,
-            home_game_player_stats
-        )
-
-        render_stat_section_spacer()
-
-        render_return_box_score(
-            away_team,
-            away_game_player_stats
-        )
-
-        render_return_box_score(
-            home_team,
-            home_game_player_stats
-        )
+            render_return_box_score(
+                home_team,
+                home_game_player_stats
+            )
 
     if selected_game_section == "Injuries":
         st.subheader("Injuries")
