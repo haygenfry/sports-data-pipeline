@@ -31,4 +31,16 @@ for loader in loaders:
 
     print()
 
+print("--- Running load_depth_charts.py ---")
+
+result = subprocess.run(
+    [sys.executable, "load_depth_charts.py"]
+)
+
+if result.returncode != 0:
+    print("\nRefresh failed while running load_depth_charts.py")
+    sys.exit(result.returncode)
+
+print()
+
 print(f"Week {week} refresh complete.")

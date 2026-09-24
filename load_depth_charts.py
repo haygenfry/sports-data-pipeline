@@ -37,6 +37,19 @@ for team_id in team_ids:
 
     depthchart = data["depthchart"]
 
+    cursor.execute(
+        """
+        INSERT INTO nfl_depth_chart_snapshots (
+            team_id
+        )
+        VALUES (%s)
+        RETURNING snapshot_id;
+        """,
+        (team_id,)
+    )
+
+    snapshot_id = cursor.fetchone()[0]
+
     player_count = 0
 
     for unit in depthchart:
@@ -92,6 +105,36 @@ for team_id in team_ids:
                         depth_order = EXCLUDED.depth_order
                     """,
                     (
+                        team_id,
+                        unit_name,
+                        position_slot,
+                        position_info["abbreviation"],
+                        position_group,
+                        athlete["id"],
+                        athlete["displayName"],
+                        depth_order
+                    )
+                )
+
+                cursor.execute(
+                    """
+                    INSERT INTO nfl_depth_chart_history (
+                        snapshot_id,
+                        team_id,
+                        unit,
+                        position_slot,
+                        position,
+                        position_group,
+                        player_id,
+                        player_name,
+                        depth_order
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    );
+                    """,
+                    (
+                        snapshot_id,
                         team_id,
                         unit_name,
                         position_slot,
