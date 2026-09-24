@@ -1,8 +1,14 @@
+import sys
 import requests
 from db import get_connection
 
 SEASON = 2026
-WEEK = 2
+
+if len(sys.argv) != 2:
+    print("Usage: python load_team_game_stats.py <week>")
+    sys.exit(1)
+
+WEEK = int(sys.argv[1])
 
 connection = get_connection()
 

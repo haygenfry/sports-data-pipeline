@@ -1,9 +1,15 @@
+import sys
 import requests
 from datetime import datetime, timezone
 from db import get_connection
 
 SEASON = 2026
-WEEK = 2
+
+if len(sys.argv) != 2:
+    print("Usage: python load_weather.py <week>")
+    sys.exit(1)
+
+WEEK = int(sys.argv[1])
 
 forecast_url = "https://api.open-meteo.com/v1/forecast"
 
